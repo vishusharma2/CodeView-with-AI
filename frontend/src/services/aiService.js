@@ -3,7 +3,7 @@ let debounceTimer = null;
 
 export const getAISuggestion = async (code, cursorPosition, language) => {
   try {
-    const response = await fetch("http://localhost:5000/api/ai/suggest", {
+    const response = await fetch("/api/ai/suggest", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

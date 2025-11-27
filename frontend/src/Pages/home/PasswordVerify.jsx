@@ -25,7 +25,7 @@ const PasswordVerify = () => {
 
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:5000/api/rooms/verify", {
+      const response = await fetch("/api/rooms/verify", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

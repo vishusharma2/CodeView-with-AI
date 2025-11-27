@@ -5,7 +5,8 @@ export const initSocket = async () => {
         reconnectionAttempt: 'Infinity',
         timeout: 10000,
         transports: ['websocket'],
+        path: '/socket.io', // Use Vite's proxy
     };
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-    return io(backendUrl, options);
+    // Use current origin (works on both localhost and network IP)
+    return io(window.location.origin, options);
 };
