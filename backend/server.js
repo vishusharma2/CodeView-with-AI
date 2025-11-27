@@ -1,0 +1,212 @@
+require("dotenv").config();
+const express = require("express");
+const app = express();
+const http = require("http");
+const { Server } = require("socket.io");
+const cors = require("cors");
+const axios = require("axios");
+const ACTIONS = require("./Actions.cjs");
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
+app.use(cors({
+  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  credentials: true,
+}));
+
+app.use(express.json());
+
+/************************************************************
+ * Health Check
+ ************************************************************/
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", message: "Backend is running" });
+});
+
+/************************************************************
+ * Zego Token Endpoint (2025 Official Method Using REST API)
+ ************************************************************/
+app.get("/api/zego-token", async (req, res) => {
+  try {
+    const { roomId, username } = req.query;
+
+    if (!roomId || !username) {
+      return res.status(400).json({ error: "roomId and username are required" });
+    }
+
+    const appID = Number(process.env.ZEGO_APP_ID);
+    const serverSecret = process.env.ZEGO_SERVER_SECRET;
+
+    if (!appID || !serverSecret) {
+      return res.status(500).json({ error: "Missing Zego credentials" });
+    }
+
+    const userID = Date.now().toString();
+
+    // Call Zego REST API
+    const response = await axios.post(
+      "https://api.zegocloud.com/v1/user/login_token",
+      {
+        app_id: appID,
+        server_secret: serverSecret,
+        id_name: username,
+        room_id: roomId,
+        user_id: userID,
+      }
+    );
+
+    if (!response.data?.data?.token) {
+      console.error("Invalid Zego response:", response.data);
+      return res.status(500).json({ error: "Failed to generate token" });
+    }
+
+    const serverToken = response.data.data.token;
+
+    // Build KitToken (UIKit requires Base64 encoded JSON)
+    const kitTokenObject = {
+      appID,
+      token: serverToken,
+      roomID: roomId,
+      userID,
+      userName: username,
+    };
+
+    const kitToken = Buffer.from(JSON.stringify(kitTokenObject)).toString("base64");
+
+    return res.json({ token: kitToken });
+  } catch (err) {
+    console.error("Zego token error:", err.response?.data || err.message);
+    return res.status(500).json({ error: "Failed to generate token" });
+  }
+});
+
+/************************************************************
+ * Socket.IO Real-time Collaborative Editor Logic
+ ************************************************************/
+const userSocketMap = {};
+
+function getAllConnectedClients(roomId) {
+  return Array.from(io.sockets.adapter.rooms.get(roomId) || []).map(socketId => {
+    return {
+      socketId,
+      username: userSocketMap[socketId],
+    };
+  });
+}
+
+io.on("connection", (socket) => {
+  console.log("Socket connected:", socket.id);
+
+  /**************** JOIN ROOM *****************/
+  socket.on(ACTIONS.JOIN, ({ roomId, username }) => {
+    if (!roomId || !username) return;
+
+    userSocketMap[socket.id] = username;
+    socket.join(roomId);
+
+    const clients = getAllConnectedClients(roomId);
+
+    clients.forEach(({ socketId }) => {
+      io.to(socketId).emit(ACTIONS.JOINED, {
+        clients,
+        username,
+        socketId: socket.id,
+      });
+    });
+  });
+
+  /**************** CODE SYNC *****************/
+  socket.on(ACTIONS.CODE_CHANGE, ({ roomId, code }) => {
+    socket.to(roomId).emit(ACTIONS.CODE_CHANGE, { code });
+  });
+
+  socket.on(ACTIONS.SYNC_CODE, ({ socketId, code }) => {
+    io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
+  });
+
+  /**************** LANGUAGE SYNC *****************/
+  socket.on(ACTIONS.LANGUAGE_CHANGE, ({ roomId, language }) => {
+    socket.to(roomId).emit(ACTIONS.LANGUAGE_CHANGE, { language });
+  });
+
+  /**************** VIDEO CALL HANDLERS *****************/
+  socket.on(ACTIONS.VIDEO_CALL_INVITE, ({ roomId, initiator }) => {
+    console.log(`📞 [SERVER] Received VIDEO_CALL_INVITE from ${initiator} for room ${roomId}`);
+    // Broadcast video call invitation to all other members in the room
+    socket.to(roomId).emit(ACTIONS.VIDEO_CALL_INVITE, { 
+      initiator,
+      roomId 
+    });
+    console.log(`📞 [SERVER] Broadcasted VIDEO_CALL_INVITE to room ${roomId}`);
+  });
+
+  socket.on(ACTIONS.VIDEO_CALL_RESPONSE, ({ roomId, username, accepted }) => {
+    console.log(`📞 [SERVER] Received VIDEO_CALL_RESPONSE from ${username}: ${accepted ? 'accepted' : 'declined'}`);
+    // Broadcast user's response to all members in the room
+    io.to(roomId).emit(ACTIONS.VIDEO_CALL_RESPONSE, { 
+      username, 
+      accepted 
+    });
+    console.log(`📞 [SERVER] Broadcasted VIDEO_CALL_RESPONSE to room ${roomId}`);
+  });
+
+  socket.on(ACTIONS.VIDEO_CALL_END, ({ roomId }) => {
+    // Notify all members that the video call has ended
+    io.to(roomId).emit(ACTIONS.VIDEO_CALL_END);
+  });
+
+  /**************** WEBRTC SIGNALING *****************/
+  socket.on(ACTIONS.WEBRTC_OFFER, ({ roomId, offer, targetSocketId }) => {
+    // Forward WebRTC offer to specific peer
+    io.to(targetSocketId).emit(ACTIONS.WEBRTC_OFFER, {
+      offer,
+      senderSocketId: socket.id,
+    });
+  });
+
+  socket.on(ACTIONS.WEBRTC_ANSWER, ({ roomId, answer, targetSocketId }) => {
+    // Forward WebRTC answer to specific peer
+    io.to(targetSocketId).emit(ACTIONS.WEBRTC_ANSWER, {
+      answer,
+      senderSocketId: socket.id,
+    });
+  });
+
+  socket.on(ACTIONS.WEBRTC_ICE_CANDIDATE, ({ roomId, candidate, targetSocketId }) => {
+    // Forward ICE candidate to specific peer
+    io.to(targetSocketId).emit(ACTIONS.WEBRTC_ICE_CANDIDATE, {
+      candidate,
+      senderSocketId: socket.id,
+    });
+  });
+
+  /**************** DISCONNECT LOGIC *****************/
+  socket.on("disconnecting", () => {
+    const rooms = [...socket.rooms].filter(r => r !== socket.id);
+
+    rooms.forEach(roomId => {
+      socket.to(roomId).emit(ACTIONS.DISCONNECTED, {
+        socketId: socket.id,
+        username: userSocketMap[socket.id],
+      });
+    });
+  });
+
+  socket.on("disconnect", () => {
+    delete userSocketMap[socket.id];
+  });
+});
+
+/************************************************************
+ * Start Server
+ ************************************************************/
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
