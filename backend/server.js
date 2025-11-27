@@ -6,6 +6,14 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 const axios = require("axios");
 const ACTIONS = require("./Actions.cjs");
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const Room = require("./models/Room");
+
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/codeview")
+.then(() => console.log("✅ MongoDB connected successfully"))
+.catch((err) => console.error("❌ MongoDB connection error:", err));
 
 const server = http.createServer(app);
 
@@ -85,6 +93,69 @@ app.get("/api/zego-token", async (req, res) => {
   } catch (err) {
     console.error("Zego token error:", err.response?.data || err.message);
     return res.status(500).json({ error: "Failed to generate token" });
+  }
+});
+
+/************************************************************
+ * Room Password Management
+ ************************************************************/
+app.post("/api/rooms", async (req, res) => {
+  try {
+    const { roomId, password } = req.body;
+
+    if (!roomId || !password) {
+      return res.status(400).json({ error: "roomId and password are required" });
+    }
+
+    // Check if room already exists
+    const existingRoom = await Room.findOne({ roomId });
+    if (existingRoom) {
+      return res.status(409).json({ error: "Room already exists" });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create room
+    const room = new Room({
+      roomId,
+      password: hashedPassword,
+    });
+
+    await room.save();
+
+    return res.json({ 
+      success: true, 
+      message: "Room created successfully",
+      roomId 
+    });
+  } catch (err) {
+    console.error("Room creation error:", err);
+    return res.status(500).json({ error: "Failed to create room" });
+  }
+});
+
+app.post("/api/rooms/verify", async (req, res) => {
+  try {
+    const { roomId, password } = req.body;
+
+    if (!roomId || !password) {
+      return res.status(400).json({ error: "roomId and password are required" });
+    }
+
+    // Find room
+    const room = await Room.findOne({ roomId });
+    if (!room) {
+      return res.json({ valid: false });
+    }
+
+    // Compare password
+    const isValid = await bcrypt.compare(password, room.password);
+
+    return res.json({ valid: isValid });
+  } catch (err) {
+    console.error("Password verification error:", err);
+    return res.status(500).json({ error: "Failed to verify password" });
   }
 });
 

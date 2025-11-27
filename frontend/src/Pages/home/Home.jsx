@@ -10,9 +10,7 @@ const Home = () => {
 
   const createNewRoom = (e) => {
     e.preventDefault();
-    const id = uuidv4();
-    setRoomId(id);
-    toast.success("New Room Created!");
+    navigate("/new-room");
   };
 
   const joinRoom = () => {
@@ -21,7 +19,7 @@ const Home = () => {
       return;
     }
 
-    navigate(`/editor/${roomId}`, {
+    navigate(`/verify-password/${roomId}`, {
       state: { username },
     });
   };
@@ -31,7 +29,7 @@ const Home = () => {
   };
 
   return (
-    <div className="homePageWrapper">
+    <div className="flex items-center justify-center color-[#fff] h-[100vh] bg-[linear-gradient(135deg, #0a0e27 0%, #1a0b2e 50%, #160e30 100%) position-relative overflow-hidden">
       <div className="formWrapper">
         <img
           className="homePageLogo"

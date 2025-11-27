@@ -48,8 +48,12 @@ const EditorPage = () => {
       setIsUsernameSet(true);
       // Store in sessionStorage for page refreshes
       sessionStorage.setItem(`username_${roomId}`, currentUsername);
+    } else {
+      // If no username, redirect to password verification
+      // This handles the case when someone directly accesses the editor URL
+      reactNavigator(`/verify-password/${roomId}`);
     }
-  }, [roomId, location.state]);
+  }, [roomId, location.state, reactNavigator]);
 
   useEffect(() => {
     if (!isUsernameSet || !username) return;
@@ -275,61 +279,6 @@ const EditorPage = () => {
       setOutput(newOutput);
     }
   };
-
-  const handleUsernameSubmit = () => {
-    if (!username.trim()) {
-      toast.error('Please enter a username');
-      return;
-    }
-    sessionStorage.setItem(`username_${roomId}`, username);
-    setIsUsernameSet(true);
-  };
-
-  const handleUsernameKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleUsernameSubmit();
-    }
-  };
-
-  // Show username prompt if not set
-  if (!isUsernameSet) {
-    return (
-      <div className="homePageWrapper">
-        <div className="formWrapper">
-          <img
-            className='homePageLogo'
-            src="/code-view-logo1.png"
-            alt="Logo"
-          />
-          <h4 className='mainLabel'>Enter your username to join room</h4>
-          <div className="inputGroup">
-            <input
-              type="text"
-              className="inputBox"
-              placeholder='USERNAME'
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onKeyPress={handleUsernameKeyPress}
-              autoFocus
-            />
-            <button
-              onClick={handleUsernameSubmit}
-              className="btn joinBtn"
-            >
-              Join Room
-            </button>
-            <button
-              onClick={() => reactNavigator('/')}
-              className="btn leaveBtn"
-              style={{ marginTop: '10px' }}
-            >
-              Back to Home
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="mainWrap">
