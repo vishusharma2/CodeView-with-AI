@@ -12,6 +12,7 @@ import "codemirror/mode/rust/rust";
 import "codemirror/addon/edit/closetag";
 import "codemirror/addon/edit/closebrackets";
 import ACTIONS from '../Actions';
+import { debouncedGetAISuggestion, cancelPendingSuggestion } from '../services/aiService';
 
 const LANGUAGE_MODES = {
     javascript: { name: 'javascript', json: true },
@@ -29,6 +30,8 @@ const Editor = ({ socketRef, roomId, onCodeChange }) => {
     const editorRef = useRef(null);
     const textareaRef = useRef(null);
     const [language, setLanguage] = useState('javascript');
+    const [aiSuggestion, setAiSuggestion] = useState(null);
+    const suggestionWidgetRef = useRef(null);
 
     useEffect(() => {
         if (!textareaRef.current) return;
@@ -44,6 +47,30 @@ const Editor = ({ socketRef, roomId, onCodeChange }) => {
             lineNumbers: true,
         });
 
+        // Add keyboard handler for AI suggestions on the wrapper element
+        const wrapperElement = editorRef.current.getWrapperElement();
+        const handleKeyDown = (event) => {
+            // Tab to accept suggestion
+            if (event.key === 'Tab' && suggestionWidgetRef.current) {
+                const suggestionText = suggestionWidgetRef.current.textContent;
+                if (suggestionText) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const cursor = editorRef.current.getCursor();
+                    editorRef.current.replaceRange(suggestionText, cursor);
+                    setAiSuggestion(null);
+                }
+            }
+            // ESC to dismiss suggestion
+            if (event.key === 'Escape' && suggestionWidgetRef.current) {
+                event.preventDefault();
+                setAiSuggestion(null);
+            }
+        };
+        
+        // Use capture phase to intercept before CodeMirror
+        wrapperElement.addEventListener('keydown', handleKeyDown, true);
+
         editorRef.current.on('change', (instance, changes) => {
             const { origin } = changes;
             const code = instance.getValue();
@@ -55,11 +82,41 @@ const Editor = ({ socketRef, roomId, onCodeChange }) => {
                     code,
                 });
             }
+
+            // Clear suggestion immediately when user types
+            if (origin === '+input' || origin === '+delete') {
+                setAiSuggestion(null);
+                if (suggestionWidgetRef.current) {
+                    suggestionWidgetRef.current.remove();
+                    suggestionWidgetRef.current = null;
+                }
+            }
+
+            // Trigger AI suggestion (debounced) - only when user is typing
+            if (origin === '+input' && code.trim().length > 0) {
+                const cursor = instance.getCursor();
+                const cursorPosition = instance.indexFromPos(cursor);
+                
+                debouncedGetAISuggestion(code, cursorPosition, language, (suggestion) => {
+                    if (suggestion) {
+                        setAiSuggestion(suggestion);
+                    }
+                });
+            }
         });
 
         // Cleanup function to destroy editor instance
         return () => {
+            cancelPendingSuggestion();
+            if (suggestionWidgetRef.current) {
+                suggestionWidgetRef.current.remove();
+                suggestionWidgetRef.current = null;
+            }
             if (editorRef.current) {
+                const wrapper = editorRef.current.getWrapperElement();
+                if (wrapper) {
+                    wrapper.removeEventListener('keydown', handleKeyDown, true);
+                }
                 editorRef.current.toTextArea();
                 editorRef.current = null;
             }
@@ -92,6 +149,46 @@ const Editor = ({ socketRef, roomId, onCodeChange }) => {
         };
 
     }, [socketRef.current]);
+
+    // Render AI suggestion as ghost text
+    useEffect(() => {
+        if (!editorRef.current) {
+            return;
+        }
+
+        // Clear previous widget if it exists
+        if (suggestionWidgetRef.current) {
+            suggestionWidgetRef.current.remove();
+            suggestionWidgetRef.current = null;
+        }
+
+        // Only create new widget if there's a suggestion
+        if (!aiSuggestion) {
+            return;
+        }
+
+        const cursor = editorRef.current.getCursor();
+        
+        // Create ghost text element
+        const ghostText = document.createElement('span');
+        ghostText.textContent = aiSuggestion;
+        ghostText.className = 'ai-suggestion-ghost';
+        ghostText.style.color = '#888';
+        ghostText.style.fontStyle = 'italic';
+        ghostText.style.opacity = '0.6';
+        ghostText.style.pointerEvents = 'none';
+        
+        // Add widget at cursor position and store the DOM element
+        editorRef.current.addWidget(cursor, ghostText, false);
+        suggestionWidgetRef.current = ghostText;
+        
+        return () => {
+            if (suggestionWidgetRef.current) {
+                suggestionWidgetRef.current.remove();
+                suggestionWidgetRef.current = null;
+            }
+        };
+    }, [aiSuggestion]);
 
     const handleLanguageChange = (e) => {
         const newLanguage = e.target.value;

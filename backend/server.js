@@ -9,6 +9,11 @@ const ACTIONS = require("./Actions.cjs");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const Room = require("./models/Room");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+// Google Gemini AI Client
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/codeview")
@@ -156,6 +161,72 @@ app.post("/api/rooms/verify", async (req, res) => {
   } catch (err) {
     console.error("Password verification error:", err);
     return res.status(500).json({ error: "Failed to verify password" });
+  }
+});
+
+/************************************************************
+ * AI Code Suggestions
+ ************************************************************/
+// Simple rate limiting: track requests per IP
+const aiRequestCounts = new Map();
+
+app.post("/api/ai/suggest", async (req, res) => {
+  try {
+    const { code, cursorPosition, language } = req.body;
+
+    if (!code || cursorPosition === undefined) {
+      return res.status(400).json({ error: "code and cursorPosition are required" });
+    }
+
+    // Rate limiting: max 10 requests per minute per IP
+    const clientIP = req.ip;
+    const now = Date.now();
+    const requestData = aiRequestCounts.get(clientIP) || { count: 0, resetTime: now + 60000 };
+    
+    if (now > requestData.resetTime) {
+      requestData.count = 0;
+      requestData.resetTime = now + 60000;
+    }
+    
+    if (requestData.count >= 10) {
+      return res.status(429).json({ error: "Rate limit exceeded. Try again later." });
+    }
+    
+    requestData.count++;
+    aiRequestCounts.set(clientIP, requestData);
+
+    // Check if Gemini API key is configured
+    if (!process.env.GEMINI_API_KEY) {
+      return res.json({ suggestion: null, error: "Gemini API key not configured" });
+    }
+
+    // Split code at cursor position
+    const codeBefore = code.substring(0, cursorPosition);
+    const codeAfter = code.substring(cursorPosition);
+
+    // Create prompt for Gemini
+    const prompt = `You are a code completion AI assistant. Complete the code at the cursor position with 1-2 lines of code.
+
+Language: ${language || "javascript"}
+
+Code before cursor:
+${codeBefore}
+
+Code after cursor:
+${codeAfter}
+
+Provide ONLY the next 1-2 lines of code to complete at the cursor position. No explanations, no markdown formatting, just raw code.`;
+
+    // Call Gemini API
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const suggestion = response.text()?.trim() || null;
+
+    return res.json({ suggestion });
+  } catch (err) {
+    console.error("AI suggestion error:", err.message);
+    // Don't expose API errors to client
+    return res.json({ suggestion: null });
   }
 });
 
