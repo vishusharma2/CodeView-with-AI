@@ -299,6 +299,13 @@ io.on("connection", (socket) => {
     });
     console.log(`📞 [SERVER] Broadcasted VIDEO_CALL_RESPONSE to room ${roomId}`);
   });
+  
+
+  socket.on(ACTIONS.VIDEO_CALL_LEAVE, ({ roomId, username }) => {
+    console.log(`📞 [SERVER] ${username} left the video call in room ${roomId}`);
+    // Notify all members that this user left the call
+    io.to(roomId).emit(ACTIONS.VIDEO_CALL_LEAVE, { username });
+  });
 
   socket.on(ACTIONS.VIDEO_CALL_END, ({ roomId }) => {
     // Notify all members that the video call has ended

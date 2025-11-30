@@ -8,6 +8,7 @@ const ACTIONS = {
   LANGUAGE_CHANGE: "language-change",
   VIDEO_CALL_INVITE: "video-call-invite",
   VIDEO_CALL_RESPONSE: "video-call-response",
+  VIDEO_CALL_LEAVE: "video-call-leave",
   VIDEO_CALL_END: "video-call-end",
   WEBRTC_OFFER: "webrtc-offer",
   WEBRTC_ANSWER: "webrtc-answer",
