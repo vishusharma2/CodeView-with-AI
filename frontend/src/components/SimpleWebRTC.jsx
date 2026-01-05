@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import ACTIONS from '../Actions';
 
 const SimpleWebRTC = ({ socketRef, roomId, participants, onClose }) => {
   const localVideoRef = useRef(null);
@@ -28,14 +29,33 @@ const SimpleWebRTC = ({ socketRef, roomId, participants, onClose }) => {
     if (!socketRef.current) return;
 
     // Listen for WebRTC signaling events
-    socketRef.current.on('WEBRTC_OFFER', handleReceiveOffer);
-    socketRef.current.on('WEBRTC_ANSWER', handleReceiveAnswer);
-    socketRef.current.on('WEBRTC_ICE_CANDIDATE', handleReceiveIceCandidate);
+    socketRef.current.on(ACTIONS.WEBRTC_OFFER, handleReceiveOffer);
+    socketRef.current.on(ACTIONS.WEBRTC_ANSWER, handleReceiveAnswer);
+    socketRef.current.on(ACTIONS.WEBRTC_ICE_CANDIDATE, handleReceiveIceCandidate);
+    
+    // Listen for when participants leave
+    socketRef.current.on(ACTIONS.VIDEO_CALL_LEAVE, ({ username }) => {
+      console.log('👋 [SimpleWebRTC] Participant left:', username);
+      setRemoteStreams(prev => {
+        const updated = { ...prev };
+        const socketIdToRemove = Object.keys(updated).find(socketId => updated[socketId].username === username);
+        if (socketIdToRemove) {
+          console.log('👋 [SimpleWebRTC] Removing remote stream for:', username);
+          delete updated[socketIdToRemove];
+          if (peerConnectionsRef.current[socketIdToRemove]) {
+            peerConnectionsRef.current[socketIdToRemove].close();
+            delete peerConnectionsRef.current[socketIdToRemove];
+          }
+        }
+        return updated;
+      });
+    });
 
     return () => {
-      socketRef.current.off('WEBRTC_OFFER', handleReceiveOffer);
-      socketRef.current.off('WEBRTC_ANSWER', handleReceiveAnswer);
-      socketRef.current.off('WEBRTC_ICE_CANDIDATE', handleReceiveIceCandidate);
+      socketRef.current.off(ACTIONS.WEBRTC_OFFER, handleReceiveOffer);
+      socketRef.current.off(ACTIONS.WEBRTC_ANSWER, handleReceiveAnswer);
+      socketRef.current.off(ACTIONS.WEBRTC_ICE_CANDIDATE, handleReceiveIceCandidate);
+      socketRef.current.off(ACTIONS.VIDEO_CALL_LEAVE);
     };
   }, [socketRef.current]);
 
@@ -109,7 +129,7 @@ const SimpleWebRTC = ({ socketRef, roomId, participants, onClose }) => {
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
         console.log('🎥 [WebRTC] Sending ICE candidate to:', targetSocketId);
-        socketRef.current.emit('WEBRTC_ICE_CANDIDATE', {
+        socketRef.current.emit(ACTIONS.WEBRTC_ICE_CANDIDATE, {
           roomId,
           candidate: event.candidate,
           targetSocketId,
@@ -126,7 +146,7 @@ const SimpleWebRTC = ({ socketRef, roomId, participants, onClose }) => {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
 
-      socketRef.current.emit('WEBRTC_OFFER', {
+      socketRef.current.emit(ACTIONS.WEBRTC_OFFER, {
         roomId,
         offer,
         targetSocketId,
@@ -149,7 +169,7 @@ const SimpleWebRTC = ({ socketRef, roomId, participants, onClose }) => {
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
 
-      socketRef.current.emit('WEBRTC_ANSWER', {
+      socketRef.current.emit(ACTIONS.WEBRTC_ANSWER, {
         roomId,
         answer,
         targetSocketId: senderSocketId,
@@ -181,24 +201,86 @@ const SimpleWebRTC = ({ socketRef, roomId, participants, onClose }) => {
     }
   };
 
-  const toggleAudio = () => {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsAudioEnabled(audioTrack.enabled);
-      }
+  const toggleAudio = async () => {
+    console.log('🎤 [WebRTC] Toggle audio clicked');
+    if (!localStreamRef.current) {
+      console.error('🎤 [WebRTC] No local stream!');
+      return;
     }
+
+    const audioTrack = localStreamRef.current.getAudioTracks()[0];
+    if (!audioTrack) {
+      console.error('🎤 [WebRTC] No audio track found!');
+      return;
+    }
+
+    const newState = !isAudioEnabled;
+    
+    // Update all peer connections
+    const promises = Object.values(peerConnectionsRef.current).map(async (peerConnection) => {
+      const senders = peerConnection.getSenders();
+      const audioSender = senders[0]; // Audio is first track (index 0)
+      
+      if (audioSender) {
+        try {
+          if (newState) {
+            await audioSender.replaceTrack(audioTrack);
+            console.log('🎤 [WebRTC] Replaced with real audio track');
+          } else {
+            await audioSender.replaceTrack(null);
+            console.log('🎤 [WebRTC] Replaced audio with null (muted)');
+          }
+        } catch (error) {
+          console.error('🎤 [WebRTC] Error replacing audio track:', error);
+        }
+      }
+    });
+
+    await Promise.all(promises);
+    audioTrack.enabled = newState;
+    setIsAudioEnabled(newState);
+    console.log('🎤 [WebRTC] Audio', newState ? 'UNMUTED' : 'MUTED');
   };
 
-  const toggleVideo = () => {
-    if (localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoEnabled(videoTrack.enabled);
-      }
+  const toggleVideo = async () => {
+    console.log('📹 [WebRTC] Toggle video clicked');
+    if (!localStreamRef.current) {
+      console.error('📹 [WebRTC] No local stream!');
+      return;
     }
+
+    const videoTrack = localStreamRef.current.getVideoTracks()[0];
+    if (!videoTrack) {
+      console.error('📹 [WebRTC] No video track found!');
+      return;
+    }
+
+    const newState = !isVideoEnabled;
+    
+    // Update all peer connections
+    const promises = Object.values(peerConnectionsRef.current).map(async (peerConnection) => {
+      const senders = peerConnection.getSenders();
+      const videoSender = senders[1]; // Video is second track (index 1)
+      
+      if (videoSender) {
+        try {
+          if (newState) {
+            await videoSender.replaceTrack(videoTrack);
+            console.log('📹 [WebRTC] Replaced with real video track');
+          } else {
+            await videoSender.replaceTrack(null);
+            console.log('📹 [WebRTC] Replaced video with null (camera off)');
+          }
+        } catch (error) {
+          console.error('📹 [WebRTC] Error replacing video track:', error);
+        }
+      }
+    });
+
+    await Promise.all(promises);
+    videoTrack.enabled = newState;
+    setIsVideoEnabled(newState);
+    console.log('📹 [WebRTC] Video', newState ? 'ENABLED' : 'DISABLED');
   };
 
   const cleanup = () => {
@@ -383,3 +465,7 @@ const RemoteVideo = ({ stream, username }) => {
 };
 
 export default SimpleWebRTC;
+
+
+
+

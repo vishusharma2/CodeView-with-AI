@@ -29,6 +29,9 @@ const EditorPage = () => {
   const [isUsernameSet, setIsUsernameSet] = useState(false);
   const [output, setOutput] = useState([]);
   const [show, setShow] = useState(true);
+  const [language, setLanguage] = useState('javascript');
+  const [isExecuting, setIsExecuting] = useState(false);
+  
   
   // Video call states
   const [inVideoCall, setInVideoCall] = useState(false);
@@ -126,6 +129,13 @@ const EditorPage = () => {
         } else {
           toast(`${respondent} declined the video call`, { icon: '📵' });
         }
+      });
+
+      socketRef.current.on(ACTIONS.VIDEO_CALL_LEAVE, ({ username: leavingUser }) => {
+        console.log('👋 [VIDEO] Received VIDEO_CALL_LEAVE:', leavingUser);
+        // Remove user from participants list
+        setVideoCallParticipants((prev) => prev.filter(p => p !== leavingUser));
+        toast(`${leavingUser} left the video call`, { icon: '👋' });
       });
 
       socketRef.current.on(ACTIONS.VIDEO_CALL_END, () => {
@@ -232,52 +242,82 @@ const EditorPage = () => {
     });
   };
 
+  const leaveVideoCall = () => {
+    // Individual user leaves the call
+    console.log('👋 [VIDEO] Leaving video call');
+    
+    // Clean up local state
+    setInVideoCall(false);
+    setVideoCallParticipants([]);
+    setShowVideoWindow(false);
+    
+    // Notify others that this user left (not ending for everyone)
+    socketRef.current.emit(ACTIONS.VIDEO_CALL_LEAVE, { 
+      roomId, 
+      username 
+    });
+    
+    toast('You left the video call', { icon: '👋' });
+  };
+
   const endVideoCall = () => {
+    // End the call for everyone (host action)
+    console.log('📞 [VIDEO] Ending video call for everyone');
+    
     // Clean up local state first
     setInVideoCall(false);
     setVideoCallParticipants([]);
     setShowVideoWindow(false);
     
-    // Notify others that the call has ended
+    // Notify others that the call has ended for everyone
     socketRef.current.emit(ACTIONS.VIDEO_CALL_END, { roomId });
     
-    toast('Video call ended', { icon: '📞' });
+    toast('Video call ended for everyone', { icon: '📞' });
   };
 
-  const runCode = () => {
+  const runCode = async () => {
     const code = codeRef.current;
-    if (!code) return;
+    if (!code) {
+      toast.error('No code to execute');
+      return;
+    }
 
-    const newOutput = [];
-    const originalLog = console.log;
-    const originalError = console.error;
-    const originalWarn = console.warn;
-
-    console.log = (...args) => {
-      newOutput.push({ text: args.join(' '), isError: false });
-      originalLog(...args);
-    };
-
-    console.error = (...args) => {
-      newOutput.push({ text: args.join(' '), isError: true });
-      originalError(...args);
-    };
-
-    console.warn = (...args) => {
-      newOutput.push({ text: args.join(' '), isError: false });
-      originalWarn(...args);
-    };
+    setIsExecuting(true);
+    setOutput({}); // Clear previous output
 
     try {
-      // eslint-disable-next-line no-new-func
-      new Function(code)();
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/execute-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code,
+          language,
+          stdin: '', // Can be extended to support user input
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.error && !result.success) {
+        toast.error(result.error);
+      } else if (result.success) {
+        toast.success('Code executed successfully!');
+      }
+
+      setOutput(result);
     } catch (error) {
-      newOutput.push({ text: error.toString(), isError: true });
+      console.error('Execution error:', error);
+      toast.error('Failed to execute code. Please try again.');
+      setOutput({
+        success: false,
+        error: 'Failed to connect to execution server',
+        stdout: null,
+        stderr: null,
+      });
     } finally {
-      console.log = originalLog;
-      console.error = originalError;
-      console.warn = originalWarn;
-      setOutput(newOutput);
+      setIsExecuting(false);
     }
   };
 
@@ -366,9 +406,12 @@ const EditorPage = () => {
             roomId={roomId}
             onCodeChange={(code) => {
               codeRef.current = code;
+            }}
+            onLanguageChange={(newLanguage) => {
+              setLanguage(newLanguage);
             }} />   
         }
-        <Output output={output} />
+        <Output output={output} isLoading={isExecuting} />
 
         {/* Draggable Floating Video Call Window */}
         {showVideoWindow && (
@@ -432,7 +475,7 @@ const EditorPage = () => {
                     socketRef={socketRef}
                     roomId={roomId}
                     participants={clients}
-                    onClose={endVideoCall}
+                    onClose={leaveVideoCall}
                   />
                 </div>
               )}
@@ -445,3 +488,4 @@ const EditorPage = () => {
 };
 
 export default EditorPage;
+

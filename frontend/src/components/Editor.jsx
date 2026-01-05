@@ -26,7 +26,7 @@ const LANGUAGE_MODES = {
     rust: { name: 'rust' },
 };
 
-const Editor = ({ socketRef, roomId, onCodeChange }) => {
+const Editor = ({ socketRef, roomId, onCodeChange, onLanguageChange }) => {
     const editorRef = useRef(null);
     const textareaRef = useRef(null);
     const [language, setLanguage] = useState('javascript');
@@ -203,6 +203,11 @@ const Editor = ({ socketRef, roomId, onCodeChange }) => {
                 roomId,
                 language: newLanguage,
             });
+        }
+
+        // Notify parent component of language change
+        if (onLanguageChange) {
+            onLanguageChange(newLanguage);
         }
     };
 
