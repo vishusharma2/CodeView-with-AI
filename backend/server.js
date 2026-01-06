@@ -231,14 +231,9 @@ Provide ONLY the next 1-2 lines of code to complete at the cursor position. No e
 });
 
 /************************************************************
- * Judge0 Code Execution
+ * JDoodle Code Execution
  ************************************************************/
-const {
-  getLanguageId,
-  submitCode,
-  pollSubmissionResult,
-  detectLanguageMismatch,
-} = require("./judge0Config");
+const { executeCode } = require("./jdoodleConfig");
 
 app.post("/api/execute-code", async (req, res) => {
   try {
@@ -248,61 +243,27 @@ app.post("/api/execute-code", async (req, res) => {
       return res.status(400).json({ error: "code and language are required" });
     }
 
-    // Check if Judge0 API URL is configured (API key is optional for self-hosted)
-    if (!process.env.JUDGE0_API_URL && !process.env.JUDGE0_API_KEY) {
+    // Check if JDoodle API credentials are configured
+    if (!process.env.JDOODLE_CLIENT_ID || !process.env.JDOODLE_CLIENT_SECRET) {
       return res.status(500).json({ 
-        error: "Judge0 API is not configured. Please add JUDGE0_API_URL to your .env file." 
+        error: "JDoodle API is not configured. Please add JDOODLE_CLIENT_ID and JDOODLE_CLIENT_SECRET to your .env file." 
       });
     }
 
-    // Detect potential language mismatch
-    const mismatchCheck = detectLanguageMismatch(code, language);
-    if (mismatchCheck.mismatch) {
-      return res.json({
-        success: false,
-        error: `Language mismatch detected: Your code appears to be ${mismatchCheck.detectedLanguage}, but you selected ${language}. Please select the correct language.`,
-        stdout: null,
-        stderr: null,
-        compile_output: null,
-      });
-    }
+    // Execute code using JDoodle
+    const result = await executeCode(code, language, stdin || "");
 
-    // Get Judge0 language ID
-    const languageId = getLanguageId(language);
-
-    // Submit code to Judge0
-    const token = await submitCode(code, languageId, stdin || "");
-
-    // Poll for result
-    const result = await pollSubmissionResult(token);
-
-    // Status descriptions
-    const statusDescriptions = {
-      3: "Accepted",
-      4: "Wrong Answer",
-      5: "Time Limit Exceeded",
-      6: "Compilation Error",
-      7: "Runtime Error (SIGSEGV)",
-      8: "Runtime Error (SIGXFSZ)",
-      9: "Runtime Error (SIGFPE)",
-      10: "Runtime Error (SIGABRT)",
-      11: "Runtime Error (NZEC)",
-      12: "Runtime Error (Other)",
-      13: "Internal Error",
-      14: "Exec Format Error",
-    };
-
-    const statusMessage = statusDescriptions[result.status.id] || result.status.description;
+    // JDoodle returns statusCode 200 for successful execution
+    const isSuccess = result.statusCode === 200;
 
     return res.json({
-      success: result.status.id === 3, // Status 3 = Accepted
-      status: statusMessage,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      compile_output: result.compile_output,
-      time: result.time,
+      success: isSuccess,
+      status: isSuccess ? "Success" : "Error",
+      stdout: result.output || "",
+      stderr: !isSuccess ? result.output : "",
       memory: result.memory,
-      error: result.status.id !== 3 ? statusMessage : null,
+      cpuTime: result.cpuTime,
+      error: !isSuccess ? result.output : null,
     });
   } catch (err) {
     console.error("Code execution error:", err.message);
