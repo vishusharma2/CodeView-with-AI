@@ -1,0 +1,28 @@
+{
+  "name": "codeview-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.17",
+    "codemirror": "^5.65.17",
+    "react": "^18.3.1",
+    "react-avatar": "^5.0.3",
+    "react-dom": "^18.3.1",
+    "react-draggable": "^4.5.0",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.30.2",
+    "socket.io-client": "^4.7.5",
+    "tailwindcss": "^4.1.17",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.1.0"
+  }
+}
