@@ -1182,3 +1182,63 @@ footer a:hover {
 .modal-actions button.primary:hover {
   background: #5558e3;
 }
+
+/* ===== MATPLOTLIB/PLOT IMAGE STYLES ===== */
+
+.plotContainer {
+  margin-top: 12px;
+  padding: 12px;
+  background: #0d1117;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+}
+
+.plotImage {
+  max-width: 100%;
+  border-radius: 8px;
+  margin-top: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ===== RESIZABLE OUTPUT STYLES ===== */
+
+.outputWrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 80px;
+  max-height: 600px;
+  position: relative;
+}
+
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.resizeHandle:hover .resizeBar,
+.resizeHandle:active .resizeBar {
+  background: #6366f1;
+  width: 60px;
+}
+
+.resizeBar {
+  width: 40px;
+  height: 4px;
+  background: #30363d;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.outputWindow {
+  flex: 1;
+  overflow-y: auto;
+  padding-top: 8px;
+}

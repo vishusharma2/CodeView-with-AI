@@ -1,11 +1,48 @@
-import React from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 
 const Output = ({ output, isLoading }) => {
+  const [height, setHeight] = useState(150); // Default height in pixels
+  const isResizing = useRef(false);
+  const startY = useRef(0);
+  const startHeight = useRef(0);
+
   // Handle Judge0 result format
   const isJudge0Result = output && typeof output === 'object' && !Array.isArray(output);
 
+  // Start resizing
+  const handleMouseDown = useCallback((e) => {
+    isResizing.current = true;
+    startY.current = e.clientY;
+    startHeight.current = height;
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    
+    const handleMouseMove = (e) => {
+      if (!isResizing.current) return;
+      const deltaY = startY.current - e.clientY;
+      const newHeight = Math.max(80, Math.min(600, startHeight.current + deltaY));
+      setHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      isResizing.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [height]);
+
   return (
-    <div className="outputWrap">
+    <div className="outputWrap" style={{ height: `${height}px` }}>
+      {/* Resize Handle */}
+      <div className="resizeHandle" onMouseDown={handleMouseDown}>
+        <div className="resizeBar"></div>
+      </div>
+      
       <h3>Output</h3>
       <div className="outputWindow">
         {isLoading ? (
@@ -45,6 +82,18 @@ const Output = ({ output, isLoading }) => {
               </div>
             )}
 
+            {/* Matplotlib/Plot Image */}
+            {output.image && (
+              <div className="outputSection plotContainer">
+                <strong>Plot:</strong>
+                <img 
+                  src={`data:image/png;base64,${output.image}`}
+                  alt="Generated Plot"
+                  className="plotImage"
+                />
+              </div>
+            )}
+
             {/* Standard error */}
             {output.stderr && (
               <div className="outputSection">
@@ -62,7 +111,7 @@ const Output = ({ output, isLoading }) => {
             )}
 
             {/* Empty result */}
-            {!output.stdout && !output.stderr && !output.compile_output && !output.error && output.success && (
+            {!output.stdout && !output.stderr && !output.compile_output && !output.error && !output.image && output.success && (
               <div className="outputPlaceholder">Code executed successfully with no output</div>
             )}
           </div>
