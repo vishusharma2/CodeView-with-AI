@@ -14,5 +14,7 @@ const ACTIONS = {
   WEBRTC_OFFER: "webrtc-offer",
   WEBRTC_ANSWER: "webrtc-answer",
   WEBRTC_ICE_CANDIDATE: "webrtc-ice-candidate",
+  WHITEBOARD_DRAW: "whiteboard-draw",
+  WHITEBOARD_CLEAR: "whiteboard-clear",
 };
 module.exports = ACTIONS;

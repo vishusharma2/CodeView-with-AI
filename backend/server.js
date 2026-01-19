@@ -312,6 +312,39 @@ Provide ONLY the next 1-2 lines of code to complete at the cursor position. No e
 });
 
 /************************************************************
+ * Nova AI Chat Assistant
+ ************************************************************/
+app.post("/api/nova-ai/chat", async (req, res) => {
+  try {
+    const { message, code, language } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: "Gemini API key not configured" });
+    }
+
+    // Create prompt with coding context
+    const prompt = `You are Nova AI, a helpful coding assistant. You help developers write better code, debug issues, and explain concepts.
+
+${code ? `Current code (${language || 'javascript'}):\n\`\`\`${language || 'javascript'}\n${code}\n\`\`\`\n\n` : ''}User question: ${message}
+
+Provide a helpful, concise response. If showing code, use proper markdown formatting.`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const reply = response.text()?.trim() || "I couldn't generate a response.";
+
+    return res.json({ success: true, reply });
+  } catch (err) {
+    logger.error("Nova AI error:", err.message);
+    return res.status(500).json({ error: "Failed to get AI response" });
+  }
+});
+
+/************************************************************
  * Code Execution (Judge0 + JDoodle Fallback)
  ************************************************************/
 const judge0 = require("./judge0Config");
@@ -525,6 +558,17 @@ io.on("connection", (socket) => {
       candidate,
       senderSocketId: socket.id,
     });
+  });
+
+  /**************** WHITEBOARD *****************/
+  socket.on(ACTIONS.WHITEBOARD_DRAW, (data) => {
+    // Broadcast draw event to all other users in room
+    socket.to(data.roomId).emit(ACTIONS.WHITEBOARD_DRAW, data);
+  });
+
+  socket.on(ACTIONS.WHITEBOARD_CLEAR, ({ roomId }) => {
+    // Broadcast clear event to all other users in room
+    socket.to(roomId).emit(ACTIONS.WHITEBOARD_CLEAR);
   });
 
   /**************** DISCONNECT LOGIC *****************/
