@@ -348,6 +348,23 @@ const EditorPage = () => {
     codeRef.current = targetFile.content || '';
   };
 
+  // Switch view mode (code/whiteboard) while preserving code
+  const switchViewMode = (mode) => {
+    // Save current code before switching views
+    if (viewMode === 'code' && activeFile && codeRef.current !== undefined) {
+      const currentContent = codeRef.current;
+      // Update files array with current content
+      setFiles(prev => prev.map(f => 
+        f.name === activeFile.name ? { ...f, content: currentContent } : f
+      ));
+      // Update activeFile with current content
+      setActiveFile(prev => prev ? { ...prev, content: currentContent } : prev);
+      // Save to backend
+      saveFileToBackend(currentContent);
+    }
+    setViewMode(mode);
+  };
+
   async function copyRoomId() {
     try {
       await navigator.clipboard.writeText(roomId);
@@ -613,7 +630,7 @@ const EditorPage = () => {
           <div className="view-toggle">
             <button 
               className={`toggle-btn ${viewMode === 'code' ? 'active' : ''}`}
-              onClick={() => setViewMode('code')}
+              onClick={() => switchViewMode('code')}
               title="Code Editor"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -623,7 +640,7 @@ const EditorPage = () => {
             </button>
             <button 
               className={`toggle-btn ${viewMode === 'whiteboard' ? 'active' : ''}`}
-              onClick={() => setViewMode('whiteboard')}
+              onClick={() => switchViewMode('whiteboard')}
               title="Whiteboard"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

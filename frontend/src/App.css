@@ -1622,3 +1622,40 @@ footer a:hover {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Monaco Editor AI Suggestion Ghost Text */
+.ai-suggestion-ghost-monaco {
+  color: #888 !important;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+/* Monaco Editor Container - Professional Styling */
+.editorContainer {
+  height: 100%;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #30363d;
+  background: #1e1e1e;
+  box-shadow: 
+    0 4px 6px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.editorContainer .monaco-editor {
+  border-radius: 12px;
+}
+
+.editorContainer .monaco-editor .margin {
+  background: transparent !important;
+}
+
+.editorContainer .monaco-editor .monaco-scrollable-element {
+  border-radius: 0 12px 12px 0;
+}
+
+/* Line highlight styling */
+.editorContainer .monaco-editor .current-line {
+  background: rgba(99, 102, 241, 0.06) !important;
+}
