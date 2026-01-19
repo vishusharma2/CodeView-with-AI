@@ -54,9 +54,15 @@ const EditorPage = () => {
   // Multi-file state
   const [files, setFiles] = useState([]);
   const [activeFile, setActiveFile] = useState(null);
+  const activeFileRef = useRef(null); // Track active file for socket listeners
   const [showNewFileModal, setShowNewFileModal] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [newFileError, setNewFileError] = useState('');
+
+  // Sync activeFileRef
+  useEffect(() => {
+    activeFileRef.current = activeFile;
+  }, [activeFile]);
   
   // Video call states
   const [inVideoCall, setInVideoCall] = useState(false);
@@ -200,6 +206,55 @@ const EditorPage = () => {
         setShowVideoWindow(false);
         toast('Video call ended', { icon: '📞' });
       });
+
+      // File sync event listeners
+      socketRef.current.on(ACTIONS.FILE_CREATE, ({ file }) => {
+        logger.log('📁 Received FILE_CREATE:', file.name);
+        setFiles((prev) => {
+          // Avoid duplicates
+          if (prev.some(f => f.name === file.name)) return prev;
+          return [...prev, file];
+        });
+        toast.success(`${file.name} was created by another user`);
+      });
+
+      socketRef.current.on(ACTIONS.FILE_DELETE, ({ fileName }) => {
+        logger.log('🗑️ Received FILE_DELETE:', fileName);
+        setFiles((prev) => prev.filter(f => f.name !== fileName));
+        // If the deleted file was active, switch to first available file
+        setActiveFile((prevActive) => {
+          if (prevActive?.name === fileName) {
+            setFiles((prevFiles) => {
+              const remaining = prevFiles.filter(f => f.name !== fileName);
+              if (remaining.length > 0) {
+                codeRef.current = remaining[0].content || '';
+                return remaining;
+              }
+              return prevFiles;
+            });
+            return null; // Will be updated by the setFiles callback
+          }
+          return prevActive;
+        });
+        toast(`${fileName} was deleted by another user`, { icon: '🗑️' });
+      });
+
+      // Listen for code changes to update files state (for non-active files)
+      socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code, fileName: changedFileName }) => {
+        if (!changedFileName) return;
+        
+        // precise-sync: Update codeRef if this is the active file
+        // This ensures that if the user switches files, we have the latest content for the current file
+        // stored in codeRef, so it can be correctly saved to the files array during the switch.
+        if (activeFileRef.current && activeFileRef.current.name === changedFileName) {
+          codeRef.current = code;
+        }
+
+        // Update the files state with the new content
+        setFiles((prev) => prev.map(f => 
+          f.name === changedFileName ? { ...f, content: code } : f
+        ));
+      });
     };
 
     init();
@@ -212,6 +267,9 @@ const EditorPage = () => {
         socketRef.current.off(ACTIONS.VIDEO_CALL_INVITE);
         socketRef.current.off(ACTIONS.VIDEO_CALL_RESPONSE);
         socketRef.current.off(ACTIONS.VIDEO_CALL_END);
+        socketRef.current.off(ACTIONS.FILE_CREATE);
+        socketRef.current.off(ACTIONS.FILE_DELETE);
+        socketRef.current.off(ACTIONS.CODE_CHANGE);
       }
     };
   }, [isUsernameSet, username, roomId]);
@@ -291,6 +349,12 @@ const EditorPage = () => {
       setShowNewFileModal(false);
       setNewFileName('');
       setNewFileError('');
+      
+      // Broadcast file creation to other users
+      if (socketRef.current) {
+        socketRef.current.emit(ACTIONS.FILE_CREATE, { roomId, file: newFile });
+      }
+      
       toast.success(`Created ${name}`);
     } catch (err) {
       logger.error('Create file error:', err);
@@ -320,6 +384,12 @@ const EditorPage = () => {
           setActiveFile(remaining[0] || null);
           codeRef.current = remaining[0]?.content || '';
         }
+        
+        // Broadcast file deletion to other users
+        if (socketRef.current) {
+          socketRef.current.emit(ACTIONS.FILE_DELETE, { roomId, fileName });
+        }
+        
         toast.success(`Deleted ${fileName}`);
       }
     } catch (err) {
@@ -792,6 +862,7 @@ const EditorPage = () => {
                   initialCode={activeFile.content}
                   username={username}
                   language={activeFile.language}
+                  fileName={activeFile.name}
                   onCodeChange={(code) => {
                     codeRef.current = code;
                     // Update local file state

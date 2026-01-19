@@ -30,7 +30,7 @@ const generateUserColor = (username) => {
     return colors[Math.abs(hash) % colors.length];
 };
 
-const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, language = 'javascript' }) => {
+const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, language = 'javascript', fileName }) => {
     const editorRef = useRef(null);
     const monacoRef = useRef(null);
     const [aiSuggestion, setAiSuggestion] = useState(null);
@@ -40,6 +40,7 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
     const lastCursorEmitRef = useRef(0);
     const userColor = useRef(generateUserColor(username || 'user'));
     const isRemoteChange = useRef(false);
+    const fileNameRef = useRef(fileName);
 
     // Keep suggestion ref in sync with state
     useEffect(() => {
@@ -53,10 +54,18 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
         }
     }, [username]);
 
+    // Update fileNameRef when fileName prop changes
+    useEffect(() => {
+        fileNameRef.current = fileName;
+    }, [fileName]);
+
     // Handle editor mount
     const handleEditorDidMount = (editor, monaco) => {
         editorRef.current = editor;
         monacoRef.current = monaco;
+        
+        // Focus editor
+        editor.focus();
 
         // Set initial code if available
         if (initialCode) {
@@ -71,10 +80,11 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
             onCodeChange(code);
 
             // Emit code change to other users
-            if (socketRef.current) {
+            if (socketRef.current && fileNameRef.current) {
                 socketRef.current.emit(ACTIONS.CODE_CHANGE, {
                     roomId,
                     code,
+                    fileName: fileNameRef.current,
                 });
             }
 
@@ -90,12 +100,12 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
                 debouncedGetAISuggestion(code, cursorPosition, language, (suggestion) => {
                     if (suggestion && editorRef.current) {
                         setAiSuggestion(suggestion);
-                        
-                        // Show suggestion as inline decoration
                         const pos = editorRef.current.getPosition();
+                        
+                        // Show ghost text using decorations
                         decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, [
                             {
-                                range: new monacoRef.current.Range(
+                                range: new monaco.Range(
                                     pos.lineNumber,
                                     pos.column,
                                     pos.lineNumber,
@@ -114,12 +124,12 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
             }
         });
 
-        // Track cursor position for typing indication
-        editor.onDidChangeModelContent(() => {
+        // Track cursor position (typing + movement)
+        const emitCursorPosition = () => {
             if (!socketRef.current || !username) return;
 
             const now = Date.now();
-            if (now - lastCursorEmitRef.current < 100) return;
+            if (now - lastCursorEmitRef.current < 50) return; // Reduce throttle for smoother movement
             lastCursorEmitRef.current = now;
 
             const position = editor.getPosition();
@@ -127,9 +137,13 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
                 roomId,
                 username,
                 cursor: { line: position.lineNumber - 1, ch: position.column - 1 },
-                color: userColor.current
+                color: generateUserColor(username),
+                fileName: fileNameRef.current
             });
-        });
+        };
+
+        editor.onDidChangeModelContent(emitCursorPosition);
+        editor.onDidChangeCursorPosition(emitCursorPosition);
 
         // Handle Tab for AI suggestion acceptance
         editor.addCommand(monaco.KeyCode.Tab, () => {
@@ -164,8 +178,9 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
     useEffect(() => {
         if (!socketRef.current) return;
 
-        const codeHandler = ({ code }) => {
-            if (code !== null && editorRef.current) {
+        const codeHandler = ({ code, fileName: incomingFileName }) => {
+            // Only update if this is the same file
+            if (code !== null && editorRef.current && incomingFileName === fileName) {
                 isRemoteChange.current = true;
                 const currentPosition = editorRef.current.getPosition();
                 editorRef.current.setValue(code);
@@ -177,8 +192,18 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
         };
 
         // Handle remote cursor positions
-        const cursorHandler = ({ username: remoteUsername, cursor, color, socketId }) => {
+        const cursorHandler = ({ username: remoteUsername, cursor, color, socketId, fileName: incomingFileName }) => {
             if (!editorRef.current || !monacoRef.current || !cursor) return;
+
+            // Only show cursor if it's on the same file
+            if (incomingFileName !== undefined && incomingFileName !== fileName) {
+                // If cursor is for another file, remove it if it exists
+                if (remoteCursorsRef.current[socketId]) {
+                    editorRef.current.deltaDecorations(remoteCursorsRef.current[socketId], []);
+                    delete remoteCursorsRef.current[socketId];
+                }
+                return;
+            }
 
             // Remove old decoration for this user
             if (remoteCursorsRef.current[socketId]) {
@@ -237,7 +262,7 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
             socketRef.current.off(ACTIONS.CODE_CHANGE, codeHandler);
             socketRef.current.off(ACTIONS.CURSOR_POSITION, cursorHandler);
         };
-    }, [socketRef.current]);
+    }, [socketRef.current, fileName]);
 
     // Set initial code when loaded
     useEffect(() => {

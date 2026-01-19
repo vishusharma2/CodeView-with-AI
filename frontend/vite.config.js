@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: '0.0.0.0', // Allow access from network,
-    allowedHosts: ['f8e3c62f924b.ngrok-free.app'],
+    allowedHosts: ['a2c01154623f.ngrok-free.app'],
     port: 5173,
     proxy: {
       '/socket.io': {

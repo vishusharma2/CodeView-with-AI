@@ -478,12 +478,12 @@ io.on("connection", (socket) => {
   });
 
   /**************** CODE SYNC *****************/
-  socket.on(ACTIONS.CODE_CHANGE, ({ roomId, code }) => {
-    socket.to(roomId).emit(ACTIONS.CODE_CHANGE, { code });
+  socket.on(ACTIONS.CODE_CHANGE, ({ roomId, code, fileName }) => {
+    socket.to(roomId).emit(ACTIONS.CODE_CHANGE, { code, fileName });
   });
 
-  socket.on(ACTIONS.SYNC_CODE, ({ socketId, code }) => {
-    io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
+  socket.on(ACTIONS.SYNC_CODE, ({ socketId, code, fileName }) => {
+    io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code, fileName });
   });
 
   /**************** LANGUAGE SYNC *****************/
@@ -492,13 +492,15 @@ io.on("connection", (socket) => {
   });
 
   /**************** CURSOR POSITION SYNC *****************/
-  socket.on(ACTIONS.CURSOR_POSITION, ({ roomId, username, cursor, color }) => {
+  /**************** CURSOR POSITION SYNC *****************/
+  socket.on(ACTIONS.CURSOR_POSITION, ({ roomId, username, cursor, color, fileName }) => {
     // Broadcast cursor position to all other users in the room
     socket.to(roomId).emit(ACTIONS.CURSOR_POSITION, { 
       username, 
       cursor,
       color,
-      socketId: socket.id
+      socketId: socket.id,
+      fileName // Forward fileName
     });
   });
 
@@ -569,6 +571,24 @@ io.on("connection", (socket) => {
   socket.on(ACTIONS.WHITEBOARD_CLEAR, ({ roomId }) => {
     // Broadcast clear event to all other users in room
     socket.to(roomId).emit(ACTIONS.WHITEBOARD_CLEAR);
+  });
+
+  /**************** FILE SYNC *****************/
+  socket.on(ACTIONS.FILE_CREATE, ({ roomId, file }) => {
+    // Broadcast new file to all other users in room
+    socket.to(roomId).emit(ACTIONS.FILE_CREATE, { file });
+    logger.log(`📁 File created: ${file.name} in room ${roomId}`);
+  });
+
+  socket.on(ACTIONS.FILE_DELETE, ({ roomId, fileName }) => {
+    // Broadcast file deletion to all other users in room
+    socket.to(roomId).emit(ACTIONS.FILE_DELETE, { fileName });
+    logger.log(`🗑️ File deleted: ${fileName} in room ${roomId}`);
+  });
+
+  socket.on(ACTIONS.FILE_SYNC, ({ roomId, files }) => {
+    // Sync files list to all other users in room
+    socket.to(roomId).emit(ACTIONS.FILE_SYNC, { files });
   });
 
   /**************** DISCONNECT LOGIC *****************/

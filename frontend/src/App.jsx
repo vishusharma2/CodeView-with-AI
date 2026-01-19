@@ -20,7 +20,7 @@ function App() {
         }}
       />
 
-      <Router>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/new-room" element={<NewRoom />} />

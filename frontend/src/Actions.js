@@ -16,6 +16,9 @@ const ACTIONS = {
   WEBRTC_ICE_CANDIDATE: "webrtc-ice-candidate",
   WHITEBOARD_DRAW: "whiteboard-draw",
   WHITEBOARD_CLEAR: "whiteboard-clear",
+  FILE_CREATE: "file-create",
+  FILE_DELETE: "file-delete",
+  FILE_SYNC: "file-sync",
 };
 
 export default ACTIONS;
