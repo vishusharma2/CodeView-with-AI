@@ -9,6 +9,7 @@ const ACTIONS = require("./Actions.cjs");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const Room = require("./models/Room");
+const Annotation = require("./models/Annotation");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const logger = require("./logger");
 
@@ -244,6 +245,65 @@ app.delete("/api/rooms/:roomId/files/:fileName", async (req, res) => {
     return res.status(500).json({ error: "Failed to delete file" });
   }
 });
+
+/************************************************************
+ * Annotation API (Whiteboard Persistence)
+ ************************************************************/
+// GET: Load annotations for a room
+app.get("/api/rooms/:roomId/annotations", async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const annotation = await Annotation.findOne({ roomId });
+    
+    return res.json({
+      success: true,
+      drawingData: annotation ? annotation.drawingData : []
+    });
+  } catch (err) {
+    logger.error("Load annotations error:", err);
+    return res.status(500).json({ error: "Failed to load annotations" });
+  }
+});
+
+// PUT: Save annotations for a room
+app.put("/api/rooms/:roomId/annotations", async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { drawingData } = req.body;
+    
+    await Annotation.findOneAndUpdate(
+      { roomId },
+      { 
+        roomId,
+        drawingData,
+        lastActivity: new Date()
+      },
+      { upsert: true, new: true }
+    );
+    
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error("Save annotations error:", err);
+    return res.status(500).json({ error: "Failed to save annotations" });
+  }
+});
+
+// Cleanup cron: Delete annotations inactive for 10 minutes
+// Run every 5 minutes
+setInterval(async () => {
+  try {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const result = await Annotation.deleteMany({
+      lastActivity: { $lt: tenMinutesAgo }
+    });
+    
+    if (result.deletedCount > 0) {
+      logger.log(`🧹 Cleaned up ${result.deletedCount} inactive annotation(s)`);
+    }
+  } catch (err) {
+    logger.error("Annotation cleanup error:", err);
+  }
+}, 5 * 60 * 1000); // Every 5 minutes
 
 /************************************************************
  * AI Code Suggestions
@@ -589,6 +649,13 @@ io.on("connection", (socket) => {
   socket.on(ACTIONS.FILE_SYNC, ({ roomId, files }) => {
     // Sync files list to all other users in room
     socket.to(roomId).emit(ACTIONS.FILE_SYNC, { files });
+  });
+
+  /**************** CODE OUTPUT SYNC *****************/
+  socket.on(ACTIONS.CODE_OUTPUT, ({ roomId, output, executedBy, fileName }) => {
+    // Broadcast code execution output to all other users in room
+    socket.to(roomId).emit(ACTIONS.CODE_OUTPUT, { output, executedBy, fileName });
+    logger.log(`▶️ Code executed by ${executedBy} in room ${roomId}`);
   });
 
   /**************** DISCONNECT LOGIC *****************/

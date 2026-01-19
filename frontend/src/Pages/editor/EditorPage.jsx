@@ -255,6 +255,13 @@ const EditorPage = () => {
           f.name === changedFileName ? { ...f, content: code } : f
         ));
       });
+
+      // Listen for code output from other users
+      socketRef.current.on(ACTIONS.CODE_OUTPUT, ({ output, executedBy, fileName }) => {
+        logger.log(`▶️ Received code output from ${executedBy} for ${fileName}`);
+        setOutput(output);
+        toast(`${executedBy} ran ${fileName}`, { icon: '▶️' });
+      });
     };
 
     init();
@@ -270,6 +277,7 @@ const EditorPage = () => {
         socketRef.current.off(ACTIONS.FILE_CREATE);
         socketRef.current.off(ACTIONS.FILE_DELETE);
         socketRef.current.off(ACTIONS.CODE_CHANGE);
+        socketRef.current.off(ACTIONS.CODE_OUTPUT);
       }
     };
   }, [isUsernameSet, username, roomId]);
@@ -586,16 +594,30 @@ const EditorPage = () => {
         toast.success('Code executed successfully!');
       }
 
-      setOutput(result);
+      // Add executedBy info
+      const outputWithUser = { ...result, executedBy: username };
+      setOutput(outputWithUser);
+
+      // Broadcast output to other users in the room
+      if (socketRef.current) {
+        socketRef.current.emit(ACTIONS.CODE_OUTPUT, {
+          roomId,
+          output: outputWithUser,
+          executedBy: username,
+          fileName: activeFile.name
+        });
+      }
     } catch (error) {
       logger.error('Execution error:', error);
       toast.error('Failed to execute code. Please try again.');
-      setOutput({
+      const errorOutput = {
         success: false,
         error: 'Failed to connect to execution server',
         stdout: null,
         stderr: null,
-      });
+        executedBy: username
+      };
+      setOutput(errorOutput);
     } finally {
       setIsExecuting(false);
     }

@@ -30,6 +30,76 @@ const generateUserColor = (username) => {
     return colors[Math.abs(hash) % colors.length];
 };
 
+// Language-specific completion providers
+const languageKeywords = {
+    python: {
+        keywords: ['def', 'class', 'if', 'elif', 'else', 'for', 'while', 'try', 'except', 'finally', 'with', 'as', 'import', 'from', 'return', 'yield', 'lambda', 'pass', 'break', 'continue', 'raise', 'assert', 'global', 'nonlocal', 'del', 'True', 'False', 'None', 'and', 'or', 'not', 'in', 'is'],
+        builtins: ['print', 'len', 'range', 'str', 'int', 'float', 'list', 'dict', 'set', 'tuple', 'bool', 'type', 'input', 'open', 'file', 'abs', 'all', 'any', 'bin', 'chr', 'dir', 'divmod', 'enumerate', 'eval', 'exec', 'filter', 'format', 'getattr', 'hasattr', 'hash', 'hex', 'id', 'isinstance', 'issubclass', 'iter', 'map', 'max', 'min', 'next', 'oct', 'ord', 'pow', 'repr', 'reversed', 'round', 'setattr', 'slice', 'sorted', 'sum', 'super', 'vars', 'zip', '__init__', '__str__', '__repr__', '__len__', '__getitem__', '__setitem__']
+    },
+    java: {
+        keywords: ['public', 'private', 'main', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'extends', 'implements', 'new', 'this', 'super', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default', 'break', 'continue', 'return', 'try', 'catch', 'finally', 'throw', 'throws', 'void', 'int', 'long', 'double', 'float', 'boolean', 'char', 'byte', 'short', 'String', 'null', 'true', 'false', 'import', 'package'],
+        builtins: ['System.out.println', 'System.out.print', 'String.valueOf', 'Integer.parseInt', 'Double.parseDouble', 'Arrays.sort', 'Arrays.toString', 'Collections.sort', 'Math.max', 'Math.min', 'Math.abs', 'Math.sqrt', 'Math.pow', 'Math.random']
+    },
+    cpp: {
+        keywords: ['int', 'long', 'double', 'float', 'char', 'bool', 'void', 'auto', 'const', 'static', 'extern', 'class', 'struct', 'public', 'private', 'protected', 'virtual', 'override', 'new', 'delete', 'this', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default', 'break', 'continue', 'return', 'try', 'catch', 'throw', 'namespace', 'using', 'include', 'define', 'template', 'typename', 'nullptr', 'true', 'false'],
+        builtins: ['cout', 'cin', 'endl', 'vector', 'string', 'map', 'set', 'pair', 'queue', 'stack', 'priority_queue', 'sort', 'find', 'push_back', 'pop_back', 'begin', 'end', 'size', 'empty', 'clear']
+    },
+    go: {
+        keywords: ['package', 'import', 'func', 'var', 'const', 'type', 'struct', 'interface', 'map', 'chan', 'if', 'else', 'for', 'range', 'switch', 'case', 'default', 'break', 'continue', 'return', 'go', 'defer', 'select', 'fallthrough', 'nil', 'true', 'false', 'iota'],
+        builtins: ['fmt.Println', 'fmt.Printf', 'fmt.Sprintf', 'len', 'cap', 'make', 'new', 'append', 'copy', 'delete', 'panic', 'recover', 'close', 'string', 'int', 'int64', 'float64', 'bool', 'error']
+    },
+    ruby: {
+        keywords: ['def', 'end', 'class', 'module', 'if', 'elsif', 'else', 'unless', 'case', 'when', 'while', 'until', 'for', 'do', 'begin', 'rescue', 'ensure', 'raise', 'return', 'yield', 'self', 'super', 'nil', 'true', 'false', 'and', 'or', 'not', 'require', 'include', 'extend', 'attr_accessor', 'attr_reader', 'attr_writer', 'private', 'public', 'protected'],
+        builtins: ['puts', 'print', 'gets', 'chomp', 'to_s', 'to_i', 'to_f', 'to_a', 'to_h', 'length', 'size', 'each', 'map', 'select', 'reject', 'reduce', 'find', 'sort', 'reverse', 'join', 'split', 'push', 'pop', 'shift', 'unshift']
+    },
+    php: {
+        keywords: ['function', 'class', 'public', 'private', 'protected', 'static', 'final', 'abstract', 'interface', 'extends', 'implements', 'new', 'this', 'self', 'if', 'else', 'elseif', 'for', 'foreach', 'while', 'do', 'switch', 'case', 'default', 'break', 'continue', 'return', 'try', 'catch', 'finally', 'throw', 'namespace', 'use', 'require', 'include', 'echo', 'print', 'true', 'false', 'null', 'array'],
+        builtins: ['echo', 'print', 'print_r', 'var_dump', 'strlen', 'strpos', 'substr', 'str_replace', 'explode', 'implode', 'array_push', 'array_pop', 'array_map', 'array_filter', 'array_merge', 'count', 'isset', 'empty', 'json_encode', 'json_decode']
+    },
+    rust: {
+        keywords: ['fn', 'let', 'mut', 'const', 'static', 'struct', 'enum', 'impl', 'trait', 'pub', 'mod', 'use', 'self', 'super', 'crate', 'if', 'else', 'match', 'loop', 'while', 'for', 'in', 'break', 'continue', 'return', 'async', 'await', 'move', 'ref', 'where', 'type', 'unsafe', 'true', 'false'],
+        builtins: ['println!', 'print!', 'format!', 'vec!', 'String::new', 'String::from', 'Vec::new', 'Option', 'Some', 'None', 'Result', 'Ok', 'Err', 'unwrap', 'expect', 'clone', 'iter', 'map', 'filter', 'collect', 'len', 'push', 'pop']
+    }
+};
+
+let completionProvidersRegistered = false;
+
+const registerLanguageCompletions = (monaco) => {
+    if (completionProvidersRegistered) return;
+    completionProvidersRegistered = true;
+
+    Object.entries(languageKeywords).forEach(([lang, { keywords, builtins }]) => {
+        monaco.languages.registerCompletionItemProvider(lang, {
+            provideCompletionItems: (model, position) => {
+                const word = model.getWordUntilPosition(position);
+                const range = {
+                    startLineNumber: position.lineNumber,
+                    endLineNumber: position.lineNumber,
+                    startColumn: word.startColumn,
+                    endColumn: word.endColumn
+                };
+
+                const suggestions = [
+                    ...keywords.map(kw => ({
+                        label: kw,
+                        kind: monaco.languages.CompletionItemKind.Keyword,
+                        insertText: kw,
+                        range
+                    })),
+                    ...builtins.map(fn => ({
+                        label: fn,
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: fn.includes('(') ? fn : fn + (fn.includes('.') || fn.includes('!') ? '' : '()'),
+                        range
+                    }))
+                ];
+
+                return { suggestions };
+            }
+        });
+    });
+};
+
 const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, language = 'javascript', fileName }) => {
     const editorRef = useRef(null);
     const monacoRef = useRef(null);
@@ -63,6 +133,9 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
     const handleEditorDidMount = (editor, monaco) => {
         editorRef.current = editor;
         monacoRef.current = monaco;
+        
+        // Register language-specific completions
+        registerLanguageCompletions(monaco);
         
         // Focus editor
         editor.focus();
@@ -311,6 +384,18 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
                     glyphMargin: false,
                     renderLineHighlight: 'all',
                     renderLineHighlightOnlyWhenFocus: false,
+                    // IntelliSense / Autocomplete
+                    suggestOnTriggerCharacters: true,
+                    quickSuggestions: {
+                        other: true,
+                        comments: false,
+                        strings: true
+                    },
+                    acceptSuggestionOnEnter: 'on',
+                    tabCompletion: 'on',
+                    wordBasedSuggestions: 'currentDocument',
+                    suggestSelection: 'first',
+                    parameterHints: { enabled: true },
                 }}
                 onMount={handleEditorDidMount}
             />

@@ -52,6 +52,13 @@ const Output = ({ output, isLoading }) => {
           </div>
         ) : isJudge0Result ? (
           <div className="judge0Output">
+            {/* Executed by info */}
+            {output.executedBy && (
+              <div className="outputExecutedBy">
+                ▶️ Executed by: <strong>{output.executedBy}</strong>
+              </div>
+            )}
+
             {/* Status */}
             {output.status && (
               <div className={`outputStatus ${output.success ? 'success' : 'error'}`}>

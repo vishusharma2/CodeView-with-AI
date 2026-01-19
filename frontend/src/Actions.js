@@ -19,6 +19,7 @@ const ACTIONS = {
   FILE_CREATE: "file-create",
   FILE_DELETE: "file-delete",
   FILE_SYNC: "file-sync",
+  CODE_OUTPUT: "code-output",
 };
 
 export default ACTIONS;

@@ -1,40 +1,109 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import ACTIONS from '../Actions';
+import logger from '../utils/logger';
 
 const Whiteboard = ({ socketRef, roomId }) => {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const isDrawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
+  const drawingHistory = useRef([]); // Store all draw events
+  const saveTimeoutRef = useRef(null);
   
   // Drawing state
   const [tool, setTool] = useState('pen'); // pen, eraser
   const [color, setColor] = useState('#ffffff');
   const [strokeWidth, setStrokeWidth] = useState(3);
 
+  // Redraw all stored drawing events
+  const redrawCanvas = useCallback((drawingData) => {
+    const ctx = ctxRef.current;
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    drawingData.forEach(data => {
+      ctx.strokeStyle = data.tool === 'eraser' ? '#1a1a2e' : data.color;
+      ctx.lineWidth = data.tool === 'eraser' ? 20 : data.strokeWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(data.startX, data.startY);
+      ctx.lineTo(data.endX, data.endY);
+      ctx.stroke();
+    });
+  }, []);
+
+  // Save annotations to backend (debounced)
+  const saveAnnotations = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        await fetch(`${backendUrl}/api/rooms/${roomId}/annotations`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ drawingData: drawingHistory.current })
+        });
+        logger.log('📝 Annotations saved');
+      } catch (err) {
+        logger.error('Failed to save annotations:', err);
+      }
+    }, 1000);
+  }, [roomId]);
+
   // Initialize canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Set canvas size
     const resizeCanvas = () => {
       const rect = canvas.parentElement.getBoundingClientRect();
       canvas.width = rect.width;
       canvas.height = rect.height;
       
-      // Restore context settings after resize
       const ctx = canvas.getContext('2d');
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctxRef.current = ctx;
+      
+      if (drawingHistory.current.length > 0) {
+        redrawCanvas(drawingHistory.current);
+      }
     };
 
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
     return () => window.removeEventListener('resize', resizeCanvas);
-  }, []);
+  }, [redrawCanvas]);
+
+  // Load annotations on mount
+  useEffect(() => {
+    const loadAnnotations = async () => {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const response = await fetch(`${backendUrl}/api/rooms/${roomId}/annotations`);
+        const data = await response.json();
+        
+        if (data.success && data.drawingData && data.drawingData.length > 0) {
+          drawingHistory.current = data.drawingData;
+          redrawCanvas(data.drawingData);
+          logger.log(`📝 Loaded ${data.drawingData.length} annotation events`);
+        }
+      } catch (err) {
+        logger.error('Failed to load annotations:', err);
+      }
+    };
+
+    if (roomId) {
+      loadAnnotations();
+    }
+  }, [roomId, redrawCanvas]);
 
   // Socket event handlers
   useEffect(() => {
@@ -53,6 +122,17 @@ const Whiteboard = ({ socketRef, roomId }) => {
       ctx.moveTo(data.startX, data.startY);
       ctx.lineTo(data.endX, data.endY);
       ctx.stroke();
+
+      // Track remote drawing in history
+      drawingHistory.current.push({
+        tool: data.tool,
+        color: data.color,
+        strokeWidth: data.strokeWidth,
+        startX: data.startX,
+        startY: data.startY,
+        endX: data.endX,
+        endY: data.endY
+      });
     };
 
     const handleClear = () => {
@@ -60,6 +140,9 @@ const Whiteboard = ({ socketRef, roomId }) => {
       const ctx = ctxRef.current;
       if (!canvas || !ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Clear history on remote clear
+      drawingHistory.current = [];
     };
 
     socketRef.current.on(ACTIONS.WHITEBOARD_DRAW, handleDraw);
@@ -109,17 +192,28 @@ const Whiteboard = ({ socketRef, roomId }) => {
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
 
+    // Create draw event data
+    const drawEvent = {
+      tool,
+      color,
+      strokeWidth,
+      startX: lastPos.current.x,
+      startY: lastPos.current.y,
+      endX: pos.x,
+      endY: pos.y
+    };
+
+    // Track in history for persistence
+    drawingHistory.current.push(drawEvent);
+    
+    // Save to backend (debounced)
+    saveAnnotations();
+
     // Emit to others
     if (socketRef.current) {
       socketRef.current.emit(ACTIONS.WHITEBOARD_DRAW, {
         roomId,
-        tool,
-        color,
-        strokeWidth,
-        startX: lastPos.current.x,
-        startY: lastPos.current.y,
-        endX: pos.x,
-        endY: pos.y
+        ...drawEvent
       });
     }
 
@@ -138,6 +232,12 @@ const Whiteboard = ({ socketRef, roomId }) => {
     if (!canvas || !ctx) return;
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Clear history
+    drawingHistory.current = [];
+    
+    // Save cleared state
+    saveAnnotations();
     
     if (socketRef.current) {
       socketRef.current.emit(ACTIONS.WHITEBOARD_CLEAR, { roomId });
