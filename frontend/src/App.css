@@ -1623,11 +1623,27 @@ footer a:hover {
   cursor: not-allowed;
 }
 
-/* Monaco Editor AI Suggestion Ghost Text */
-.ai-suggestion-ghost-monaco {
-  color: #888 !important;
-  font-style: italic;
-  opacity: 0.6;
+/* Monaco Editor AI Suggestion Ghost Text - CRITICAL: Must use specific selectors */
+span.ai-suggestion-ghost-monaco::after {
+  content: attr(data-content) !important;
+  color: #6c7a89 !important;
+  font-style: italic !important;
+  opacity: 0.7 !important;
+}
+
+/* Direct Monaco view styling */
+.monaco-editor .view-lines .view-line span.ai-suggestion-ghost-monaco {
+  color: #6c7a89 !important;
+  font-style: italic !important;
+  opacity: 0.7 !important;
+}
+
+/* Fallback with higher specificity */
+.monaco-editor .view-overlay .ai-suggestion-ghost-monaco {
+  color: #6c7a89 !important;
+  font-style: italic !important;
+  opacity: 0.7 !important;
+  background: transparent !important;
 }
 
 /* Monaco Editor Container - Professional Styling */

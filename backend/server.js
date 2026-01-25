@@ -315,6 +315,96 @@ setInterval(async () => {
 // Simple rate limiting: track requests per IP
 const aiRequestCounts = new Map();
 
+// Helper function to call Ollama API for code suggestions (short responses)
+async function getOllamaCodeSuggestion(prompt, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const requestBody = {
+      model: process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
+      prompt: prompt,
+      stream: false,
+      options: {
+        temperature: 0.2,
+        num_predict: 150 // Increased from 100 to allow slightly longer completions
+        // Removed stop sequences - they were causing empty responses
+      }
+    };
+    
+    logger.log('[Ollama] Request body:', JSON.stringify(requestBody).substring(0, 200));
+    
+    const response = await fetch(`${process.env.OLLAMA_API_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`Ollama HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    logger.log('[Ollama] Raw response keys:', Object.keys(data));
+    logger.log('[Ollama] Response field:', data.response);
+    logger.log('[Ollama] Response type:', typeof data.response);
+    logger.log('[Ollama] Response length:', data.response?.length);
+    
+    // Clean the response - remove markdown code fences
+    let cleanResponse = data.response?.trim() || '';
+    
+    // Strip markdown code blocks (```javascript ... ``` or ```...```)
+    cleanResponse = cleanResponse.replace(/^```(?:javascript|js|typescript|ts|python|java|cpp|c)?\s*/i, '');
+    cleanResponse = cleanResponse.replace(/```\s*$/i, '');
+    cleanResponse = cleanResponse.trim();
+    
+    const result = cleanResponse || null;
+    logger.log('[Ollama] Final result:', result ? `"${result}"` : 'NULL');
+    return result;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+// Helper function to call Ollama API for chat (longer responses)
+async function getOllamaChat(prompt, timeoutMs = 30000) { // Increased to 30s for slower responses
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(`${process.env.OLLAMA_API_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
+        prompt: prompt,
+        stream: false,
+        options: {
+          temperature: 0.3,
+          num_predict: 500, // Allow longer responses for chat
+        }
+      }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`Ollama HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data.response?.trim() || null;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
 app.post("/api/ai/suggest", async (req, res) => {
   try {
     const { code, cursorPosition, language } = req.body;
@@ -340,38 +430,81 @@ app.post("/api/ai/suggest", async (req, res) => {
     requestData.count++;
     aiRequestCounts.set(clientIP, requestData);
 
-    // Check if Gemini API key is configured
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({ suggestion: null, error: "Gemini API key not configured" });
-    }
-
-    // Split code at cursor position
+    // Split code at cursor position and limit context to reduce tokens
     const codeBefore = code.substring(0, cursorPosition);
     const codeAfter = code.substring(cursorPosition);
+    
+    // Get only the last 10 lines before cursor and next 5 lines after
+    const beforeLines = codeBefore.split('\n');
+    const afterLines = codeAfter.split('\n');
+    
+    const contextBefore = beforeLines.slice(-10).join('\n');
+    const contextAfter = afterLines.slice(0, 5).join('\n');
 
-    // Create prompt for Gemini
-    const prompt = `You are a code completion AI assistant. Complete the code at the cursor position with 1-2 lines of code.
+    // Create concise prompt
+    const prompt = `You are an expert ${language || "javascript"} programmer. Complete the following code by providing the next 1-2 lines that should come immediately after the cursor.
 
-Language: ${language || "javascript"}
+Code context (last 10 lines before cursor):
+${contextBefore}
 
-Code before cursor:
-${codeBefore}
+<COMPLETE_HERE>
 
-Code after cursor:
-${codeAfter}
+Code after cursor (next 5 lines):
+${contextAfter}
 
-Provide ONLY the next 1-2 lines of code to complete at the cursor position. No explanations, no markdown formatting, just raw code.`;
+Provide ONLY the completion code (1-2 lines), no explanations or markdown.`;
 
-    // Call Gemini API
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const suggestion = response.text()?.trim() || null;
+    let suggestion = null;
+    let usedModel = 'none';
 
-    return res.json({ suggestion });
+    // Try Ollama first (local deepseek-coder)
+    if (process.env.OLLAMA_API_URL && process.env.OLLAMA_MODEL) {
+      try {
+        logger.log('🤖 Trying Ollama (deepseek-coder)...');
+        logger.log('Prompt preview:', prompt.substring(0, 100) + '...');
+        suggestion = await getOllamaCodeSuggestion(prompt);
+        usedModel = 'ollama';
+        logger.log('✅ Ollama responded successfully');
+        logger.log('Suggestion received:', suggestion ? `"${suggestion.substring(0, 50)}..."` : 'EMPTY');
+      } catch (ollamaErr) {
+        logger.log(`⚠️ Ollama failed (${ollamaErr.message}), falling back to Gemini...`);
+        
+        // Fallback to Gemini
+        if (process.env.GEMINI_API_KEY) {
+          try {
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            suggestion = response.text()?.trim() || null;
+            usedModel = 'gemini';
+            logger.log('✅ Gemini responded successfully');
+          } catch (geminiErr) {
+            logger.error('❌ Gemini also failed:', geminiErr.message);
+          }
+        }
+      }
+    } else {
+      // Ollama not configured, use Gemini directly
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          logger.log('🤖 Using Gemini (Ollama not configured)...');
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          suggestion = response.text()?.trim() || null;
+          usedModel = 'gemini';
+          logger.log('✅ Gemini responded successfully');
+        } catch (geminiErr) {
+          logger.error('❌ Gemini failed:', geminiErr.message);
+        }
+      } else {
+        logger.error('❌ No AI service configured');
+      }
+    }
+
+    return res.json({ suggestion, model: usedModel });
   } catch (err) {
     logger.error("AI suggestion error:", err.message);
     // Don't expose API errors to client
-    return res.json({ suggestion: null });
+    return res.json({ suggestion: null, model: 'none' });
   }
 });
 
@@ -386,25 +519,86 @@ app.post("/api/nova-ai/chat", async (req, res) => {
       return res.status(400).json({ error: "Message is required" });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "Gemini API key not configured" });
+    // Create prompt with limited coding context to save tokens
+    let codeContext = '';
+    if (code) {
+      // Limit code to first and last 25 lines (max 50 lines total)
+      const lines = code.split('\n');
+      let truncatedCode = code;
+      
+      if (lines.length > 50) {
+        const firstPart = lines.slice(0, 25).join('\n');
+        const lastPart = lines.slice(-25).join('\n');
+        truncatedCode = `${firstPart}\n... (${lines.length - 50} lines omitted) ...\n${lastPart}`;
+      }
+      
+      codeContext = `Current code (${language || 'javascript'}):\n\`\`\`${language || 'javascript'}\n${truncatedCode}\n\`\`\`\n\n`;
+    }
+    
+    const prompt = `You are Nova AI, a helpful coding assistant.
+
+${codeContext}User: ${message}
+
+Provide a concise, helpful response.`;
+
+    let reply = null;
+    let usedModel = 'none';
+
+    // Try Ollama first (local deepseek-coder)
+    if (process.env.OLLAMA_API_URL && process.env.OLLAMA_MODEL) {
+      try {
+        logger.log('🤖 [Nova AI] Trying Ollama (deepseek-coder)...');
+        reply = await getOllamaChat(prompt);
+        usedModel = 'ollama';
+        logger.log('✅ [Nova AI] Ollama responded successfully');
+      } catch (ollamaErr) {
+        logger.log(`⚠️ [Nova AI] Ollama failed (${ollamaErr.message}), falling back to Gemini...`);
+        
+        // Fallback to Gemini
+        if (process.env.GEMINI_API_KEY) {
+          try {
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            reply = response.text()?.trim() || null;
+            usedModel = 'gemini';
+            logger.log('✅ [Nova AI] Gemini responded successfully');
+          } catch (geminiErr) {
+            logger.error('❌ [Nova AI] Gemini also failed:', geminiErr.message);
+          }
+        }
+      }
+    } else {
+      // Ollama not configured, use Gemini directly
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          logger.log('🤖 [Nova AI] Using Gemini (Ollama not configured)...');
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          reply = response.text()?.trim() || null;
+          usedModel = 'gemini';
+          logger.log('✅ [Nova AI] Gemini responded successfully');
+        } catch (geminiErr) {
+          logger.error('❌ [Nova AI] Gemini failed:', geminiErr.message);
+        }
+      } else {
+        logger.error('❌ [Nova AI] No AI service configured');
+      }
     }
 
-    // Create prompt with coding context
-    const prompt = `You are Nova AI, a helpful coding assistant. You help developers write better code, debug issues, and explain concepts.
+    if (!reply) {
+      return res.status(500).json({ 
+        error: "Failed to get AI response",
+        success: false 
+      });
+    }
 
-${code ? `Current code (${language || 'javascript'}):\n\`\`\`${language || 'javascript'}\n${code}\n\`\`\`\n\n` : ''}User question: ${message}
-
-Provide a helpful, concise response. If showing code, use proper markdown formatting.`;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const reply = response.text()?.trim() || "I couldn't generate a response.";
-
-    return res.json({ success: true, reply });
+    return res.json({ success: true, reply, model: usedModel });
   } catch (err) {
     logger.error("Nova AI error:", err.message);
-    return res.status(500).json({ error: "Failed to get AI response" });
+    return res.status(500).json({ 
+      error: "Failed to get AI response",
+      success: false 
+    });
   }
 });
 

@@ -22,7 +22,9 @@ export const getAISuggestion = async (code, cursorPosition, language) => {
     }
 
     const data = await response.json();
+    logger.log('🤖 AI Response:', JSON.stringify(data));
     logger.log('🤖 AI suggestion received:', data.suggestion ? 'Yes' : 'No');
+    logger.log('🤖 Model used:', data.model || 'unknown');
     return data.suggestion || null;
   } catch (error) {
     logger.error("AI suggestion error:", error);
@@ -36,11 +38,11 @@ export const debouncedGetAISuggestion = (code, cursorPosition, language, callbac
     clearTimeout(debounceTimer);
   }
 
-  // Set new timer
+  // Set new timer (1500ms to reduce token consumption)
   debounceTimer = setTimeout(async () => {
     const suggestion = await getAISuggestion(code, cursorPosition, language);
     callback(suggestion);
-  }, 500); // 500ms debounce
+  }, 1500); // 1500ms debounce - reduces API calls significantly
 };
 
 export const cancelPendingSuggestion = () => {

@@ -1161,7 +1161,7 @@ const EditorPage = () => {
             </div>
             <div className="users-list">
               {clients.map((client) => (
-                <div key={client.SocketId} className="user-item">
+                <div key={client.socketId} className="user-item">
                   <div className="user-avatar-small">
                     {client.username.charAt(0).toUpperCase()}
                   </div>

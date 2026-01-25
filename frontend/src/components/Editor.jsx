@@ -163,6 +163,9 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
 
             // Clear AI suggestion on user input
             setAiSuggestion(null);
+            try {
+                editor.removeContentWidget({ getId: () => 'ghost.text.widget' });
+            } catch (e) {}
             decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
 
             // Trigger AI suggestion (debounced)
@@ -172,26 +175,72 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
                 
                 debouncedGetAISuggestion(code, cursorPosition, language, (suggestion) => {
                     if (suggestion && editorRef.current) {
-                        setAiSuggestion(suggestion);
+                        console.log('✅ AI Suggestion received:', suggestion);
+                        
+                        // Get current line content up to cursor
+                        const model = editorRef.current.getModel();
+                        const currentPosition = editorRef.current.getPosition();
+                        const lineContent = model.getLineContent(currentPosition.lineNumber);
+                        // Get content from start of line to cursor
+                        const linePrefix = lineContent.substring(0, currentPosition.column - 1);
+                        
+                        // Check if suggestion starts with what we already typed
+                        let displayText = suggestion;
+                        
+                        // If suggestion starts with the line prefix, strip it
+                        if (suggestion.startsWith(linePrefix)) {
+                            displayText = suggestion.substring(linePrefix.length);
+                        } else if (suggestion.startsWith(lineContent.trim())) {
+                             displayText = suggestion.substring(lineContent.trim().length);
+                        }
+
+                        // Don't show if there's nothing new to add
+                        if (!displayText || displayText.trim().length === 0) {
+                             return;
+                        }
+
+                        setAiSuggestion(suggestion); // Keep full suggestion for Tab completion
                         const pos = editorRef.current.getPosition();
                         
-                        // Show ghost text using decorations
-                        decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, [
-                            {
-                                range: new monaco.Range(
-                                    pos.lineNumber,
-                                    pos.column,
-                                    pos.lineNumber,
-                                    pos.column
-                                ),
-                                options: {
-                                    after: {
-                                        content: suggestion,
-                                        inlineClassName: 'ai-suggestion-ghost-monaco'
-                                    }
-                                }
-                            }
-                        ]);
+                        // Extract first line only for inline display
+                        const firstLine = displayText.split('\n')[0];
+                        const widgetText = firstLine + (displayText.includes('\n') ? ' ...' : '');
+                        
+                        // Create a ghost text widget for better visibility
+                        const ghostTextWidget = {
+                            getId: () => 'ghost.text.widget',
+                            getDomNode: () => {
+                                const node = document.createElement('div');
+                                node.className = 'ghost-text-widget';
+                                node.style.cssText = `
+                                    color: #6c7a89;
+                                    font-style: italic;
+                                    opacity: 0.7;
+                                    pointer-events: none;
+                                    white-space: pre;
+                                    font-family: inherit;
+                                `;
+                                node.textContent = widgetText;
+                                return node;
+                            },
+                            getPosition: () => ({
+                                position: pos,
+                                preference: [monaco.editor.ContentWidgetPositionPreference.EXACT]
+                            })
+                        };
+                        
+                        // Remove old widget if exists
+                        try {
+                            editorRef.current.removeContentWidget({ getId: () => 'ghost.text.widget' });
+                        } catch (e) {}
+                        
+                        // Add new widget
+                        editorRef.current.addContentWidget(ghostTextWidget);
+                        
+                        console.log('🎨 Ghost text widget created (first line only)');
+                        console.log('🎨 Display text:', widgetText);
+                    } else {
+                        console.log('❌ No suggestion received or editor not ready');
                     }
                 });
             }
@@ -243,6 +292,9 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
         // Handle Escape to dismiss suggestion
         editor.addCommand(monaco.KeyCode.Escape, () => {
             setAiSuggestion(null);
+            try {
+                editor.removeContentWidget({ getId: () => 'ghost.text.widget' });
+            } catch (e) {}
             decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
         });
     };
