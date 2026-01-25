@@ -11,6 +11,8 @@ const ACTIONS = {
   VIDEO_CALL_RESPONSE: "video-call-response",
   VIDEO_CALL_LEAVE: "video-call-leave",
   VIDEO_CALL_END: "video-call-end",
+  VIDEO_CALL_REJOIN_REQUEST: "video-call-rejoin-request",
+  VIDEO_CALL_REJOIN_RESPONSE: "video-call-rejoin-response",
   WEBRTC_OFFER: "webrtc-offer",
   WEBRTC_ANSWER: "webrtc-answer",
   WEBRTC_ICE_CANDIDATE: "webrtc-ice-candidate",

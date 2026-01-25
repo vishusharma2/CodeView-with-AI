@@ -69,8 +69,16 @@ const EditorPage = () => {
   const [videoCallParticipants, setVideoCallParticipants] = useState([]);
   const [showVideoCallInvite, setShowVideoCallInvite] = useState(false);
   const [videoCallInitiator, setVideoCallInitiator] = useState('');
+  const [isVideoCallHost, setIsVideoCallHost] = useState(false);
   const [showVideoWindow, setShowVideoWindow] = useState(false);
   const [isVideoMinimized, setIsVideoMinimized] = useState(false);
+  
+  // Rejoin permission states
+  const [hasLeftCall, setHasLeftCall] = useState(false);
+  const [rejoinAttempts, setRejoinAttempts] = useState(0);
+  const [showRejoinRequest, setShowRejoinRequest] = useState(false);
+  const [rejoinRequester, setRejoinRequester] = useState('');
+  const [waitingForRejoinApproval, setWaitingForRejoinApproval] = useState(false);
 
   // View mode: 'code' or 'whiteboard'
   const [viewMode, setViewMode] = useState('code');
@@ -179,6 +187,19 @@ const EditorPage = () => {
       // Video call event listeners
       socketRef.current.on(ACTIONS.VIDEO_CALL_INVITE, ({ initiator }) => {
         logger.log('📞 Received VIDEO_CALL_INVITE from:', initiator);
+        
+        // If user is blocked from rejoining (3+ failed attempts), auto-decline
+        if (rejoinAttempts >= 3) {
+          logger.log('🚫 [BLOCKED] Auto-declining invite - user is blocked from this call');
+          socketRef.current.emit(ACTIONS.VIDEO_CALL_RESPONSE, {
+            roomId,
+            username,
+            accepted: false,
+          });
+          toast.error('You are blocked from this call after 3 denied rejoin attempts');
+          return;
+        }
+        
         setVideoCallInitiator(initiator);
         setShowVideoCallInvite(true);
       });
@@ -195,16 +216,75 @@ const EditorPage = () => {
 
       socketRef.current.on(ACTIONS.VIDEO_CALL_LEAVE, ({ username: leavingUser }) => {
         logger.log('👋 [VIDEO] Received VIDEO_CALL_LEAVE:', leavingUser);
+        logger.log('👋 [VIDEO] Current participants before removal:', videoCallParticipants);
         // Remove user from participants list
-        setVideoCallParticipants((prev) => prev.filter(p => p !== leavingUser));
+        setVideoCallParticipants((prev) => {
+          const updated = prev.filter(p => p !== leavingUser);
+          logger.log('👋 [VIDEO] Participants after removal:', updated);
+          return updated;
+        });
         toast(`${leavingUser} left the video call`, { icon: '👋' });
       });
 
       socketRef.current.on(ACTIONS.VIDEO_CALL_END, () => {
         setInVideoCall(false);
+        setIsVideoCallHost(false);
         setVideoCallParticipants([]);
         setShowVideoWindow(false);
+        setHasLeftCall(false);
+        setRejoinAttempts(0);
+        setWaitingForRejoinApproval(false);
         toast('Video call ended', { icon: '📞' });
+      });
+
+      // Listen for rejoin requests (host only)
+      socketRef.current.on(ACTIONS.VIDEO_CALL_REJOIN_REQUEST, ({ requester }) => {
+        logger.log('📞 [REJOIN] Received rejoin request from:', requester);
+        logger.log('📞 [REJOIN] Current username:', username);
+        logger.log('📞 [REJOIN] inVideoCall:', inVideoCall);
+        logger.log('📞 [REJOIN] isVideoCallHost:', isVideoCallHost);
+        // Only show modal if you're not the requester
+        if (requester !== username) {
+          logger.log('📞 [REJOIN] Showing rejoin modal for requester:', requester);
+          setRejoinRequester(requester);
+          setShowRejoinRequest(true);
+          toast(`${requester} wants to rejoin the call`, { icon: '🔔' });
+        }
+      });
+
+      // Listen for rejoin response (requester only)
+      socketRef.current.on(ACTIONS.VIDEO_CALL_REJOIN_RESPONSE, ({ requester, approved }) => {
+        logger.log('📞 [REJOIN] Received rejoin response:', requester, approved);
+        if (requester === username) {
+          setWaitingForRejoinApproval(false);
+          if (approved) {
+            // Join the call as a participant
+            setInVideoCall(true);
+            setIsVideoCallHost(false);
+            setShowVideoWindow(true);
+            setHasLeftCall(false);
+            setRejoinAttempts(0);
+            setVideoCallParticipants((prev) => [...new Set([...prev, username])]);
+            socketRef.current.emit(ACTIONS.VIDEO_CALL_RESPONSE, {
+              roomId,
+              username,
+              accepted: true,
+            });
+            toast.success('Rejoin request approved!');
+          } else {
+            // Increment attempt counter and keep hasLeftCall true
+            setRejoinAttempts((prev) => {
+              const newAttempts = prev + 1;
+              if (newAttempts >= 3) {
+                toast.error('Rejoin request denied. Maximum attempts reached - you are blocked from rejoining.');
+                setHasLeftCall(false);
+              } else {
+                toast.error(`Rejoin request denied by host (${newAttempts}/3 attempts)`);
+              }
+              return newAttempts;
+            });
+          }
+        }
       });
 
       // File sync event listeners
@@ -454,9 +534,9 @@ const EditorPage = () => {
   }
 
   function leaveRoom() {
-    // End video call if user is in one
+    // Leave video call if user is in one (only disconnect self, not everyone)
     if (inVideoCall) {
-      socketRef.current.emit(ACTIONS.VIDEO_CALL_END, { roomId });
+      socketRef.current.emit(ACTIONS.VIDEO_CALL_LEAVE, { roomId, username });
     }
     reactNavigator('/');
   }
@@ -464,6 +544,25 @@ const EditorPage = () => {
   const startVideoCall = async () => {
     if (inVideoCall) {
       toast.error('You are already in a video call');
+      return;
+    }
+
+    // Check if user has left the call and there are participants (call is ongoing)
+    if (hasLeftCall && videoCallParticipants.length > 0) {
+      // Check if user is blocked from rejoining (3 failed attempts)
+      if (rejoinAttempts >= 3) {
+        toast.error('You are blocked from rejoining this call. Please wait for the call to end.');
+        return;
+      }
+      
+      // Request to rejoin instead of starting new call
+      logger.log('📞 [REJOIN] Requesting to rejoin call');
+      socketRef.current.emit(ACTIONS.VIDEO_CALL_REJOIN_REQUEST, {
+        roomId,
+        requester: username,
+      });
+      setWaitingForRejoinApproval(true);
+      toast('Requesting permission from host...', { icon: '⏳' });
       return;
     }
 
@@ -478,8 +577,10 @@ const EditorPage = () => {
         initiator: username,
       });
 
-      // Add self to participants
+      // Add self to participants and set as host
       setInVideoCall(true);
+      setIsVideoCallHost(true);
+      setHasLeftCall(false);
       setVideoCallParticipants([username]);
       setShowVideoWindow(true);
 
@@ -501,6 +602,7 @@ const EditorPage = () => {
   const handleAcceptVideoCall = () => {
     setShowVideoCallInvite(false);
     setInVideoCall(true);
+    setIsVideoCallHost(false);
     setVideoCallParticipants((prev) => [...new Set([...prev, username])]);
     setShowVideoWindow(true);
 
@@ -516,6 +618,11 @@ const EditorPage = () => {
 
   const handleDeclineVideoCall = () => {
     setShowVideoCallInvite(false);
+    
+    // Track that user declined - they need to request permission to join now
+    setHasLeftCall(true);
+    // Keep track of who's in the call (at least the initiator)
+    setVideoCallParticipants([videoCallInitiator]);
 
     // Notify others that you declined
     socketRef.current.emit(ACTIONS.VIDEO_CALL_RESPONSE, {
@@ -523,24 +630,40 @@ const EditorPage = () => {
       username,
       accepted: false,
     });
+    
+    toast('You declined the video call', { icon: '👋' });
   };
 
   const leaveVideoCall = () => {
     // Individual user leaves the call
     logger.log('👋 [VIDEO] Leaving video call');
+    logger.log('👋 [VIDEO] Current participants:', videoCallParticipants);
     
-    // Clean up local state
+    // Check if this is the last person in the call
+    const isLastPerson = videoCallParticipants.length <= 1;
+    
+    // Clean up local state but keep participants list to know call is active
     setInVideoCall(false);
-    setVideoCallParticipants([]);
+    setIsVideoCallHost(false);
     setShowVideoWindow(false);
+    setHasLeftCall(true);
     
-    // Notify others that this user left (not ending for everyone)
-    socketRef.current.emit(ACTIONS.VIDEO_CALL_LEAVE, { 
-      roomId, 
-      username 
-    });
+    // Remove self from participants list (keep others so we know call is active)
+    setVideoCallParticipants((prev) => prev.filter(p => p !== username));
     
-    toast('You left the video call', { icon: '👋' });
+    if (isLastPerson) {
+      // Last person leaving - end the call for everyone
+      logger.log('📞 [VIDEO] Last person leaving - ending call for everyone');
+      socketRef.current.emit(ACTIONS.VIDEO_CALL_END, { roomId });
+      toast('You left the video call (call ended)', { icon: '📞' });
+    } else {
+      // Not the last person - just notify others that this user left
+      socketRef.current.emit(ACTIONS.VIDEO_CALL_LEAVE, { 
+        roomId, 
+        username 
+      });
+      toast('You left the video call', { icon: '👋' });
+    }
   };
 
   const endVideoCall = () => {
@@ -549,6 +672,7 @@ const EditorPage = () => {
     
     // Clean up local state first
     setInVideoCall(false);
+    setIsVideoCallHost(false);
     setVideoCallParticipants([]);
     setShowVideoWindow(false);
     
@@ -556,6 +680,30 @@ const EditorPage = () => {
     socketRef.current.emit(ACTIONS.VIDEO_CALL_END, { roomId });
     
     toast('Video call ended for everyone', { icon: '📞' });
+  };
+
+  const handleApproveRejoin = () => {
+    logger.log('✅ [REJOIN] Approving rejoin request from:', rejoinRequester);
+    socketRef.current.emit(ACTIONS.VIDEO_CALL_REJOIN_RESPONSE, {
+      roomId,
+      requester: rejoinRequester,
+      approved: true,
+    });
+    setShowRejoinRequest(false);
+    setRejoinRequester('');
+    toast.success(`${rejoinRequester} approved to rejoin`);
+  };
+
+  const handleDenyRejoin = () => {
+    logger.log('🚫 [REJOIN] Denying rejoin request from:', rejoinRequester);
+    socketRef.current.emit(ACTIONS.VIDEO_CALL_REJOIN_RESPONSE, {
+      roomId,
+      requester: rejoinRequester,
+      approved: false,
+    });
+    setShowRejoinRequest(false);
+    setRejoinRequester('');
+    toast(`Denied ${rejoinRequester}'s rejoin request`, { icon: '🚫' });
   };
 
   const runCode = async () => {
@@ -634,6 +782,93 @@ const EditorPage = () => {
         />
       )}
 
+      {/* Rejoin Request Modal (Host Only) */}
+      {showRejoinRequest && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+            borderRadius: '16px',
+            padding: '32px',
+            width: '400px',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{
+                fontSize: '48px',
+                marginBottom: '16px',
+              }}>🔔</div>
+              <h3 style={{
+                color: 'white',
+                fontSize: '20px',
+                fontWeight: '600',
+                marginBottom: '8px',
+              }}>Rejoin Request</h3>
+              <p style={{
+                color: '#94a3b8',
+                fontSize: '15px',
+              }}>
+                <strong style={{ color: '#06b6d4' }}>{rejoinRequester}</strong> wants to rejoin the call
+              </p>
+            </div>
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+            }}>
+              <button
+                onClick={handleDenyRejoin}
+                style={{
+                  flex: 1,
+                  padding: '12px 24px',
+                  background: '#ef4444',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '15px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
+              >
+                Deny
+              </button>
+              <button
+                onClick={handleApproveRejoin}
+                style={{
+                  flex: 1,
+                  padding: '12px 24px',
+                  background: '#10b981',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '15px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
+              >
+                Approve
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TOP NAVBAR */}
       <nav className="top-navbar">
         <div className="navbar-left">
@@ -653,21 +888,27 @@ const EditorPage = () => {
 
           {/* Video Call */}
           {!inVideoCall ? (
-            <button className="navbar-icon-btn" onClick={startVideoCall} title="Start Video Call">
+            <button 
+              className={`navbar-icon-btn ${rejoinAttempts >= 3 ? 'disabled' : ''}`}
+              onClick={startVideoCall}
+              disabled={rejoinAttempts >= 3}
+              title={rejoinAttempts >= 3 ? "Blocked from call (3 denied attempts)" : "Start Video Call"}
+              style={rejoinAttempts >= 3 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+            >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M23 7l-7 5 7 5V7z"></path>
                 <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
               </svg>
-              <span className="tooltip">Video Call</span>
+              <span className="tooltip">{rejoinAttempts >= 3 ? 'Blocked (3 attempts)' : 'Video Call'}</span>
             </button>
           ) : (
-            <button className="navbar-icon-btn navbar-icon-active" onClick={endVideoCall} title="End Call">
+            <button className="navbar-icon-btn navbar-icon-active" onClick={isVideoCallHost ? endVideoCall : leaveVideoCall} title={isVideoCallHost ? "End Call (All)" : "Leave Call"}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="1" y1="1" x2="23" y2="23"></line>
                 <path d="M23 7l-7 5 7 5V7z"></path>
                 <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
               </svg>
-              <span className="tooltip">End Call</span>
+              <span className="tooltip">{isVideoCallHost ? 'End Call (All)' : 'Leave Call'}</span>
             </button>
           )}
 
@@ -807,16 +1048,75 @@ const EditorPage = () => {
                     <path d="M23 7l-7 5 7 5V7z"></path>
                     <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
                   </svg>
-                  <span>IN CALL</span>
+                  <span>IN CALL {isVideoCallHost && '(Host)'}</span>
                 </div>
                 <div className="participants-list">
                   {videoCallParticipants.map((participant, index) => (
                     <div key={index} className="participant-item">
                       <span className="participant-dot"></span>
-                      <span>{participant}</span>
+                      <span>{participant}{participant === videoCallInitiator && ' (Host)'}</span>
                     </div>
                   ))}
                 </div>
+                {/* Call Control Buttons */}
+                {inVideoCall && (
+                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 8px' }}>
+                    <button 
+                      onClick={leaveVideoCall}
+                      title="Leave the call (only you)"
+                      style={{
+                        padding: '8px 12px',
+                        background: '#f59e0b',
+                        border: 'none',
+                        borderRadius: '6px',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        fontWeight: '500',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#d97706'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#f59e0b'}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />
+                      </svg>
+                      Leave Call
+                    </button>
+                    {isVideoCallHost && (
+                      <button 
+                        onClick={endVideoCall}
+                        title="End the call for everyone"
+                        style={{
+                          padding: '8px 12px',
+                          background: '#ef4444',
+                          border: 'none',
+                          borderRadius: '6px',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="1" y1="1" x2="23" y2="23"></line>
+                          <path d="M23 7l-7 5 7 5V7z"></path>
+                          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                        </svg>
+                        End Call (All)
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

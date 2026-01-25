@@ -20,7 +20,11 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/codeview")
 .then(() => logger.log("✅ MongoDB connected successfully"))
-.catch((err) => logger.error("❌ MongoDB connection error:", err));
+.catch((err) => {
+  logger.error("❌ MongoDB connection error:", err.message);
+  logger.log("⚠️  Server will continue running, but database features may not work.");
+  logger.log("💡 Please check your MongoDB connection string or ensure your MongoDB cluster is running.");
+});
 
 const server = http.createServer(app);
 
@@ -577,6 +581,19 @@ io.on("connection", (socket) => {
 
   socket.on(ACTIONS.VIDEO_CALL_RESPONSE, ({ roomId, username, accepted }) => {
     logger.log(`📞 [SERVER] Received VIDEO_CALL_RESPONSE from ${username}: ${accepted ? 'accepted' : 'declined'}`);
+    
+    // Track video call participants when user accepts
+    if (accepted) {
+      if (!global.videoCallParticipants) {
+        global.videoCallParticipants = {};
+      }
+      if (!global.videoCallParticipants[roomId]) {
+        global.videoCallParticipants[roomId] = new Set();
+      }
+      global.videoCallParticipants[roomId].add(username);
+      logger.log(`📞 [SERVER] Added ${username} to call in ${roomId}. Total participants:`, Array.from(global.videoCallParticipants[roomId]));
+    }
+    
     // Broadcast user's response to all members in the room
     io.to(roomId).emit(ACTIONS.VIDEO_CALL_RESPONSE, { 
       username, 
@@ -588,13 +605,53 @@ io.on("connection", (socket) => {
 
   socket.on(ACTIONS.VIDEO_CALL_LEAVE, ({ roomId, username }) => {
     logger.log(`📞 [SERVER] ${username} left the video call in room ${roomId}`);
-    // Notify all members that this user left the call
-    io.to(roomId).emit(ACTIONS.VIDEO_CALL_LEAVE, { username });
+    
+    // Track video call participants per room (initialize if needed)
+    if (!global.videoCallParticipants) {
+      global.videoCallParticipants = {};
+    }
+    if (!global.videoCallParticipants[roomId]) {
+      global.videoCallParticipants[roomId] = new Set();
+    }
+    
+    // Remove the leaving user from participants
+    global.videoCallParticipants[roomId].delete(username);
+    
+    logger.log(`📞 [SERVER] Participants in ${roomId} after ${username} left:`, Array.from(global.videoCallParticipants[roomId]));
+    
+    // Check if this was the last person in the call
+    if (global.videoCallParticipants[roomId].size === 0) {
+      logger.log(`📞 [SERVER] Last person left room ${roomId} - ending call for everyone`);
+      // Notify all members that the video call has ended
+      io.to(roomId).emit(ACTIONS.VIDEO_CALL_END);
+      // Clean up
+      delete global.videoCallParticipants[roomId];
+    } else {
+      // Notify remaining members that this user left
+      io.to(roomId).emit(ACTIONS.VIDEO_CALL_LEAVE, { username });
+    }
   });
 
   socket.on(ACTIONS.VIDEO_CALL_END, ({ roomId }) => {
     // Notify all members that the video call has ended
     io.to(roomId).emit(ACTIONS.VIDEO_CALL_END);
+    // Clean up participants tracking
+    if (global.videoCallParticipants && global.videoCallParticipants[roomId]) {
+      delete global.videoCallParticipants[roomId];
+      logger.log(`📞 [SERVER] Cleaned up video call participants for room ${roomId}`);
+    }
+  });
+
+  socket.on(ACTIONS.VIDEO_CALL_REJOIN_REQUEST, ({ roomId, requester }) => {
+    logger.log(`📞 [SERVER] ${requester} requesting to rejoin call in room ${roomId}`);
+    // Broadcast rejoin request to all members in the room (host will filter)
+    socket.to(roomId).emit(ACTIONS.VIDEO_CALL_REJOIN_REQUEST, { requester });
+  });
+
+  socket.on(ACTIONS.VIDEO_CALL_REJOIN_RESPONSE, ({ roomId, requester, approved }) => {
+    logger.log(`📞 [SERVER] Rejoin ${approved ? 'approved' : 'denied'} for ${requester} in room ${roomId}`);
+    // Broadcast response to all members
+    io.to(roomId).emit(ACTIONS.VIDEO_CALL_REJOIN_RESPONSE, { requester, approved });
   });
 
   /**************** WEBRTC SIGNALING *****************/
