@@ -69,6 +69,7 @@ const EditorPage = () => {
   const [username, setUsername] = useState('');
   const [isUsernameSet, setIsUsernameSet] = useState(false);
   const [output, setOutput] = useState([]);
+  const [htmlPreview, setHtmlPreview] = useState(null);
   const [show, setShow] = useState(true);
   const [isExecuting, setIsExecuting] = useState(false);
   const saveTimeoutRef = useRef(null);
@@ -361,7 +362,13 @@ const EditorPage = () => {
       // Listen for code output from other users
       socketRef.current.on(ACTIONS.CODE_OUTPUT, ({ output, executedBy, fileName }) => {
         logger.log(`▶️ Received code output from ${executedBy} for ${fileName}`);
-        setOutput(output);
+        if (output && output.htmlPreview) {
+          setHtmlPreview(output.htmlPreview);
+          setOutput({});
+        } else {
+          setHtmlPreview(null);
+          setOutput(output);
+        }
         toast(`${executedBy} ran ${fileName}`, { icon: '▶️' });
       });
     };
@@ -759,6 +766,44 @@ const EditorPage = () => {
       return;
     }
 
+    // Handle HTML files — render in iframe instead of Judge0
+    if (activeFile.language === 'html') {
+      setHtmlPreview(null); // Clear first
+      setOutput({});
+
+      // Collect CSS from other files in the room
+      const cssFiles = files.filter(f => f.name.endsWith('.css'));
+      let combinedCSS = cssFiles.map(f => f.content || '').join('\n');
+
+      // Inject CSS into HTML if not already linked
+      let htmlContent = code;
+      if (combinedCSS && !htmlContent.includes('<style')) {
+        htmlContent = htmlContent.replace(
+          '</head>',
+          `<style>${combinedCSS}</style></head>`
+        );
+        // If no <head>, prepend the style
+        if (!htmlContent.includes('<head')) {
+          htmlContent = `<style>${combinedCSS}</style>${htmlContent}`;
+        }
+      }
+
+      setHtmlPreview(htmlContent);
+      toast.success('HTML rendered!');
+
+      // Broadcast to other users
+      if (socketRef.current) {
+        socketRef.current.emit(ACTIONS.CODE_OUTPUT, {
+          roomId,
+          output: { success: true, htmlPreview: htmlContent, executedBy: username },
+          executedBy: username,
+          fileName: activeFile.name
+        });
+      }
+      return;
+    }
+
+    setHtmlPreview(null); // Clear HTML preview for non-HTML files
     setIsExecuting(true);
     setOutput({}); // Clear previous output
 
@@ -1207,7 +1252,7 @@ const EditorPage = () => {
                   }}
                 />
               )}
-              <Output output={output} isLoading={isExecuting} />
+              <Output output={output} isLoading={isExecuting} htmlPreview={htmlPreview} />
             </>
           ) : (
             <Whiteboard socketRef={socketRef} roomId={roomId} />

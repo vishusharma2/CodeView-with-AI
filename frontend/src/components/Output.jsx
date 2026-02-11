@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 
-const Output = ({ output, isLoading }) => {
+const Output = ({ output, isLoading, htmlPreview }) => {
   const [height, setHeight] = useState(150); // Default height in pixels
   const isResizing = useRef(false);
   const startY = useRef(0);
@@ -43,9 +43,16 @@ const Output = ({ output, isLoading }) => {
         <div className="resizeBar"></div>
       </div>
       
-      <h3>Output</h3>
+      <h3>{htmlPreview ? 'HTML Preview' : 'Output'}</h3>
       <div className="outputWindow">
-        {isLoading ? (
+        {htmlPreview ? (
+          <iframe
+            className="html-preview-frame"
+            srcDoc={htmlPreview}
+            sandbox="allow-scripts allow-modals"
+            title="HTML Preview"
+          />
+        ) : isLoading ? (
           <div className="outputLoading">
             <div className="spinner"></div>
             <span>Executing code...</span>
