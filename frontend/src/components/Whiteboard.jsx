@@ -1,6 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import ACTIONS from '../Actions';
 import logger from '../utils/logger';
+import { TrashIcon } from '../icons';
+import { useTheme } from '../context/ThemeContext';
 
 const Whiteboard = ({ socketRef, roomId }) => {
   const canvasRef = useRef(null);
@@ -9,11 +11,22 @@ const Whiteboard = ({ socketRef, roomId }) => {
   const lastPos = useRef({ x: 0, y: 0 });
   const drawingHistory = useRef([]); // Store all draw events
   const saveTimeoutRef = useRef(null);
-  
+  const { theme } = useTheme();
+  const eraserColor = theme === 'light' ? '#ffffff' : '#0d1117';
+
   // Drawing state
   const [tool, setTool] = useState('pen'); // pen, eraser
-  const [color, setColor] = useState('#ffffff');
+  const [color, setColor] = useState(theme === 'light' ? '#000000' : '#ffffff');
   const [strokeWidth, setStrokeWidth] = useState(3);
+
+  // Sync default color when theme changes
+  useEffect(() => {
+    setColor(prev => {
+      if (prev === '#ffffff' && theme === 'light') return '#000000';
+      if (prev === '#000000' && theme === 'dark') return '#ffffff';
+      return prev;
+    });
+  }, [theme]);
 
   // Redraw all stored drawing events
   const redrawCanvas = useCallback((drawingData) => {
@@ -24,7 +37,7 @@ const Whiteboard = ({ socketRef, roomId }) => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     drawingData.forEach(data => {
-      ctx.strokeStyle = data.tool === 'eraser' ? '#1a1a2e' : data.color;
+      ctx.strokeStyle = data.tool === 'eraser' ? eraserColor : data.color;
       ctx.lineWidth = data.tool === 'eraser' ? 20 : data.strokeWidth;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -113,7 +126,7 @@ const Whiteboard = ({ socketRef, roomId }) => {
       const ctx = ctxRef.current;
       if (!ctx) return;
 
-      ctx.strokeStyle = data.tool === 'eraser' ? '#1a1a2e' : data.color;
+      ctx.strokeStyle = data.tool === 'eraser' ? eraserColor : data.color;
       ctx.lineWidth = data.tool === 'eraser' ? 20 : data.strokeWidth;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -181,7 +194,7 @@ const Whiteboard = ({ socketRef, roomId }) => {
     const pos = getMousePos(e);
 
     // Set drawing style
-    ctx.strokeStyle = tool === 'eraser' ? '#1a1a2e' : color;
+    ctx.strokeStyle = tool === 'eraser' ? eraserColor : color;
     ctx.lineWidth = tool === 'eraser' ? 20 : strokeWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -244,7 +257,9 @@ const Whiteboard = ({ socketRef, roomId }) => {
     }
   };
 
-  const colors = ['#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#f97316'];
+  const colors = theme === 'light'
+    ? ['#000000', '#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#f97316']
+    : ['#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#f97316'];
 
   return (
     <div className="whiteboard-container">
@@ -300,13 +315,7 @@ const Whiteboard = ({ socketRef, roomId }) => {
         {/* Clear */}
         <div className="tool-group">
           <button className="tool-btn clear-btn" onClick={handleClear} title="Clear All">
-            <svg width="14" height="14" viewBox="0 0 256 256" style={{ marginRight: '4px' }}>
-              <path d="M215 116H41a8 8 0 0 1 0-16h174a8 8 0 0 1 0 16z" fill="#858eff"/>
-              <path d="M213 116H43l18.038 126.263A16 16 0 0 0 76.877 256h102.247a16 16 0 0 0 15.839-13.737L213 116z" fill="#6770e6"/>
-              <path fill="#5861c7" d="M82.665 136h-.93c-4.141 0-7.377 3.576-6.965 7.697l8.6 86A7 7 0 0 0 90.335 236h.93c4.141 0 7.377-3.576 6.965-7.697l-8.6-86A7 7 0 0 0 82.665 136zM165.165 236h-.93c-4.141 0-7.377-3.576-6.965-7.697l8.6-86a7 7 0 0 1 6.965-6.303h.93c4.141 0 7.377 3.576 6.965 7.697l-8.6 86a7 7 0 0 1-6.965 6.303zM128.5 136h-1a7 7 0 0 0-7 7v86a7 7 0 0 0 7 7h1a7 7 0 0 0 7-7v-86a7 7 0 0 0-7-7z"/>
-              <path fill="#69ebfc" d="M148.364 100V12.121C148.364 5.427 142.937 0 136.242 0H60.485C53.79 0 48.364 5.427 48.364 12.121V100h100z"/>
-              <path fill="#d476e2" d="M208.364 100V42.121c0-6.694-5.427-12.121-12.121-12.121h-75.758c-6.694 0-12.121 5.427-12.121 12.121V100h100z"/>
-            </svg>
+            <TrashIcon size={14} style={{ marginRight: '4px' }} />
             Clear
           </button>
         </div>

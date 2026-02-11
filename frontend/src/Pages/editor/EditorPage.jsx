@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import Draggable from 'react-draggable';
 import ACTIONS from "../../Actions";
 import Client from '../../components/Client';
@@ -11,6 +13,25 @@ import VideoCallModal from '../../components/VideoCallModal';
 import SimpleWebRTC from '../../components/SimpleWebRTC';
 import { initSocket } from "../../socket";
 import logger from '../../utils/logger';
+import { useTheme } from '../../context/ThemeContext';
+import {
+  CopyIcon,
+  VideoCameraIcon,
+  VideoOffIcon,
+  LogoutIcon,
+  SpinnerIcon,
+  PlayIcon,
+  SparklesIcon,
+  SunIcon,
+  MoonIcon,
+  CodeIcon,
+  PencilIcon,
+  FileIcon,
+  FolderIcon,
+  UsersIcon,
+  PhoneEndIcon,
+  DownloadIcon,
+} from '../../icons';
 import {
   Navigate,
   useLocation,
@@ -38,6 +59,7 @@ const VALID_EXTENSIONS = {
 };
 
 const EditorPage = () => {
+  const { theme, toggleTheme } = useTheme();
   const socketRef = useRef(null);
   const codeRef = useRef(null);
   const location = useLocation();
@@ -533,6 +555,25 @@ const EditorPage = () => {
     }
   }
 
+  async function downloadFiles() {
+    if (!files || files.length === 0) {
+      toast.error('No files to download');
+      return;
+    }
+    try {
+      const zip = new JSZip();
+      files.forEach(file => {
+        zip.file(file.name, file.content || '');
+      });
+      const blob = await zip.generateAsync({ type: 'blob' });
+      saveAs(blob, `codeview-${roomId}.zip`);
+      toast.success('Files downloaded successfully');
+    } catch (err) {
+      toast.error('Failed to create ZIP');
+      logger.error(err);
+    }
+  }
+
   function leaveRoom() {
     // Leave video call if user is in one (only disconnect self, not everyone)
     if (inVideoCall) {
@@ -879,10 +920,7 @@ const EditorPage = () => {
         <div className="navbar-actions">
           {/* Copy Room ID */}
           <button className="navbar-icon-btn" onClick={copyRoomId} title="Copy Room ID">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
-            </svg>
+            <CopyIcon />
             <span className="tooltip">Copy Room ID</span>
           </button>
 
@@ -895,44 +933,28 @@ const EditorPage = () => {
               title={rejoinAttempts >= 3 ? "Blocked from call (3 denied attempts)" : "Start Video Call"}
               style={rejoinAttempts >= 3 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M23 7l-7 5 7 5V7z"></path>
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-              </svg>
+              <VideoCameraIcon />
               <span className="tooltip">{rejoinAttempts >= 3 ? 'Blocked (3 attempts)' : 'Video Call'}</span>
             </button>
           ) : (
             <button className="navbar-icon-btn navbar-icon-active" onClick={isVideoCallHost ? endVideoCall : leaveVideoCall} title={isVideoCallHost ? "End Call (All)" : "Leave Call"}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="1" y1="1" x2="23" y2="23"></line>
-                <path d="M23 7l-7 5 7 5V7z"></path>
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-              </svg>
+              <VideoOffIcon />
               <span className="tooltip">{isVideoCallHost ? 'End Call (All)' : 'Leave Call'}</span>
             </button>
           )}
 
           {/* Leave Room */}
           <button className="navbar-icon-btn navbar-icon-danger" onClick={leaveRoom} title="Leave Room">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
+            <LogoutIcon />
             <span className="tooltip">Leave Room</span>
           </button>
 
           {/* Run Code */}
           <button className="navbar-icon-btn navbar-icon-run" onClick={runCode} title="Run Code" disabled={isExecuting}>
             {isExecuting ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="spin">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M12 6v6l4 2"></path>
-              </svg>
+              <SpinnerIcon />
             ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5,3 19,12 5,21"></polygon>
-              </svg>
+              <PlayIcon />
             )}
             <span className="tooltip">{isExecuting ? 'Running...' : 'Run Code'}</span>
           </button>
@@ -943,18 +965,22 @@ const EditorPage = () => {
             onClick={() => setShowNovaAI(!showNovaAI)}
             title="Nova AI Assistant"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="url(#aiGrad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <defs>
-                <linearGradient id="aiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#a855f7" />
-                  <stop offset="100%" stopColor="#06b6d4" />
-                </linearGradient>
-              </defs>
-              <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"></path>
-              <path d="M5 19l1 3 1-3 3-1-3-1-1-3-1 3-3 1 3 1z"></path>
-              <path d="M19 10l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5L17 12l1.5-.5.5-1.5z"></path>
-            </svg>
+            <SparklesIcon />
             <span className="tooltip">Nova AI</span>
+          </button>
+
+          {/* Theme Toggle */}
+          <button 
+            className="navbar-icon-btn"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {theme === 'dark' ? (
+              <SunIcon />
+            ) : (
+              <MoonIcon />
+            )}
+            <span className="tooltip">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
           </button>
         </div>
 
@@ -966,21 +992,14 @@ const EditorPage = () => {
               onClick={() => switchViewMode('code')}
               title="Code Editor"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="16,18 22,12 16,6"></polyline>
-                <polyline points="8,6 2,12 8,18"></polyline>
-              </svg>
+              <CodeIcon />
             </button>
             <button 
               className={`toggle-btn ${viewMode === 'whiteboard' ? 'active' : ''}`}
               onClick={() => switchViewMode('whiteboard')}
               title="Whiteboard"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
-                <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
-                <path d="M2 2l7.586 7.586"></path>
-              </svg>
+              <PencilIcon />
             </button>
           </div>
 
@@ -988,9 +1007,7 @@ const EditorPage = () => {
 
           {activeFile && (
             <span className="active-file-badge">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6z"/>
-              </svg>
+              <FileIcon />
               {activeFile.name}
             </span>
           )}
@@ -1003,17 +1020,28 @@ const EditorPage = () => {
         <aside className="file-sidebar">
           <div className="file-explorer">
             <div className="explorer-header">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"></path>
-              </svg>
+              <FolderIcon />
               <span>FILES</span>
-              <button 
-                className="add-file-btn" 
-                onClick={() => setShowNewFileModal(true)}
-                title="New File"
-              >
-                +
-              </button>
+              <div className="explorer-actions">
+                <button 
+                  className="download-file-btn" 
+                  onClick={downloadFiles}
+                  title="Download All Files"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+                <button 
+                  className="add-file-btn" 
+                  onClick={() => setShowNewFileModal(true)}
+                  title="New File"
+                >
+                  +
+                </button>
+              </div>
             </div>
             
             <div className="file-tree">
@@ -1023,9 +1051,7 @@ const EditorPage = () => {
                   className={`file-item file ${activeFile?.name === file.name ? 'active' : ''}`}
                   onClick={() => switchFile(file)}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6z"/>
-                  </svg>
+                  <FileIcon />
                   <span>{file.name}</span>
                   {files.length > 1 && (
                     <button 
@@ -1044,10 +1070,7 @@ const EditorPage = () => {
             {videoCallParticipants.length > 0 && (
               <div className="video-call-section">
                 <div className="explorer-header">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M23 7l-7 5 7 5V7z"></path>
-                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-                  </svg>
+                  <VideoCameraIcon size={14} />
                   <span>IN CALL {isVideoCallHost && '(Host)'}</span>
                 </div>
                 <div className="participants-list">
@@ -1081,9 +1104,7 @@ const EditorPage = () => {
                       onMouseEnter={(e) => e.currentTarget.style.background = '#d97706'}
                       onMouseLeave={(e) => e.currentTarget.style.background = '#f59e0b'}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />
-                      </svg>
+                      <PhoneEndIcon />
                       Leave Call
                     </button>
                     {isVideoCallHost && (
@@ -1107,11 +1128,7 @@ const EditorPage = () => {
                         onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
                         onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="1" y1="1" x2="23" y2="23"></line>
-                          <path d="M23 7l-7 5 7 5V7z"></path>
-                          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-                        </svg>
+                        <VideoOffIcon size={14} />
                         End Call (All)
                       </button>
                     )}
@@ -1151,12 +1168,7 @@ const EditorPage = () => {
           {/* Connected Users - Bottom Left */}
           <div className="connected-users">
             <div className="users-header">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"></path>
-                <circle cx="9" cy="7" r="4"></circle>
-                <path d="M23 21v-2a4 4 0 00-3-3.87"></path>
-                <path d="M16 3.13a4 4 0 010 7.75"></path>
-              </svg>
+              <UsersIcon />
               <span>{clients.length} online</span>
             </div>
             <div className="users-list">
@@ -1209,10 +1221,7 @@ const EditorPage = () => {
               >
                 <div className="drag-handle video-header">
                   <div className="video-header-left">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M23 7l-7 5 7 5V7z"></path>
-                      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-                    </svg>
+                    <VideoCameraIcon size={16} />
                     <span>Video Call</span>
                     <span className="live-dot"></span>
                   </div>

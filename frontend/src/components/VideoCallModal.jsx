@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { VideoCameraIcon } from '../icons';
 
 const VideoCallModal = ({ initiator, onAccept, onDecline }) => {
   const [timeLeft, setTimeLeft] = useState(30);
@@ -23,10 +24,7 @@ const VideoCallModal = ({ initiator, onAccept, onDecline }) => {
     <div className="videoCallModalOverlay">
       <div className="videoCallModal">
         <div className="videoCallModalHeader">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M23 7l-7 5 7 5V7z"></path>
-            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-          </svg>
+          <VideoCameraIcon size={48} />
           <h2 className="neonText">Video Call Invitation</h2>
         </div>
         

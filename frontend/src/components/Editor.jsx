@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import ACTIONS from '../Actions';
 import { debouncedGetAISuggestion, cancelPendingSuggestion } from '../services/aiService';
+import { useTheme } from '../context/ThemeContext';
 
 // Monaco language mappings
 const LANGUAGE_MAP = {
@@ -101,6 +102,7 @@ const registerLanguageCompletions = (monaco) => {
 };
 
 const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, language = 'javascript', fileName }) => {
+    const { theme } = useTheme();
     const editorRef = useRef(null);
     const monacoRef = useRef(null);
     const [aiSuggestion, setAiSuggestion] = useState(null);
@@ -411,7 +413,7 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
             <MonacoEditor
                 height="100%"
                 language={LANGUAGE_MAP[language] || 'javascript'}
-                theme="vs-dark"
+                theme={theme === 'light' ? 'light' : 'vs-dark'}
                 options={{
                     minimap: { enabled: false },
                     fontSize: 14,
