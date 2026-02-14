@@ -81,11 +81,25 @@ const EditorPage = () => {
   const [showNewFileModal, setShowNewFileModal] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [newFileError, setNewFileError] = useState('');
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Sync activeFileRef
   useEffect(() => {
     activeFileRef.current = activeFile;
   }, [activeFile]);
+
+  // Close add-file dropdown on click outside
+  useEffect(() => {
+    if (!showAddMenu) return;
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.add-file-dropdown')) {
+        setShowAddMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAddMenu]);
   
   // Video call states
   const [inVideoCall, setInVideoCall] = useState(false);
@@ -477,6 +491,83 @@ const EditorPage = () => {
       logger.error('Create file error:', err);
       setNewFileError('Failed to create file');
     }
+  };
+
+  // Upload file
+  const uploadFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const name = file.name;
+    const ext = name.substring(name.lastIndexOf('.')).toLowerCase();
+
+    if (!VALID_EXTENSIONS[ext]) {
+      toast.error(`Invalid file type. Allowed: ${Object.keys(VALID_EXTENSIONS).join(', ')}`);
+      e.target.value = '';
+      return;
+    }
+
+    // Check if file already exists
+    if (files.some(f => f.name === name)) {
+      toast.error(`File "${name}" already exists`);
+      e.target.value = '';
+      return;
+    }
+
+    // Save current file content before switching
+    if (activeFile && codeRef.current !== undefined) {
+      const currentContent = codeRef.current;
+      setFiles(prev => prev.map(f => 
+        f.name === activeFile.name ? { ...f, content: currentContent } : f
+      ));
+      saveFileToBackend(currentContent);
+    }
+
+    // Read file content
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target.result;
+      const language = VALID_EXTENSIONS[ext];
+
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
+        const response = await fetch(`${backendUrl}/api/rooms/${roomId}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          toast.error(data.error || 'Failed to upload file');
+          return;
+        }
+
+        // Save content to backend
+        await fetch(`${backendUrl}/api/rooms/${roomId}/files/${encodeURIComponent(name)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+
+        const newFile = { name, content, language };
+        setFiles(prev => [...prev, newFile]);
+        setActiveFile(newFile);
+        codeRef.current = content;
+
+        // Broadcast file creation
+        if (socketRef.current) {
+          socketRef.current.emit(ACTIONS.FILE_CREATE, { roomId, file: newFile });
+        }
+
+        toast.success(`Uploaded ${name}`);
+      } catch (err) {
+        logger.error('Upload file error:', err);
+        toast.error('Failed to upload file');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
   };
 
   // Delete file
@@ -1079,13 +1170,43 @@ const EditorPage = () => {
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                 </button>
-                <button 
-                  className="add-file-btn" 
-                  onClick={() => setShowNewFileModal(true)}
-                  title="New File"
-                >
-                  +
-                </button>
+                <div className="add-file-dropdown">
+                  <button 
+                    className="add-file-btn" 
+                    onClick={() => setShowAddMenu(!showAddMenu)}
+                    title="Add File"
+                  >
+                    +
+                  </button>
+                  {showAddMenu && (
+                    <div className="add-file-menu">
+                      <button onClick={() => { setShowAddMenu(false); setShowNewFileModal(true); }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="12" y1="18" x2="12" y2="12" />
+                          <line x1="9" y1="15" x2="15" y2="15" />
+                        </svg>
+                        New File
+                      </button>
+                      <button onClick={() => { setShowAddMenu(false); fileInputRef.current?.click(); }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="17 8 12 3 7 8" />
+                          <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        Upload File
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".js,.py,.java,.cpp,.c,.rb,.php,.go,.rs,.ts,.html,.css"
+                  style={{ display: 'none' }}
+                  onChange={uploadFile}
+                />
               </div>
             </div>
             

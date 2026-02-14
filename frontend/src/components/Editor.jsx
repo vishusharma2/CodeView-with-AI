@@ -99,6 +99,57 @@ const registerLanguageCompletions = (monaco) => {
             }
         });
     });
+
+    // HTML `!` boilerplate snippet
+    monaco.languages.registerCompletionItemProvider('html', {
+        triggerCharacters: ['!'],
+        provideCompletionItems: (model, position) => {
+            const textUntilPosition = model.getValueInRange({
+                startLineNumber: position.lineNumber,
+                startColumn: 1,
+                endLineNumber: position.lineNumber,
+                endColumn: position.column
+            });
+
+            // Only trigger when `!` is typed at the start or after whitespace
+            if (!textUntilPosition.trim().endsWith('!')) {
+                return { suggestions: [] };
+            }
+
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: textUntilPosition.trimStart().length === 1 
+                    ? position.column - 1 
+                    : position.column - 1,
+                endColumn: position.column
+            };
+
+            return {
+                suggestions: [{
+                    label: '! — HTML5 Boilerplate',
+                    kind: monaco.languages.CompletionItemKind.Snippet,
+                    documentation: 'HTML5 boilerplate with doctype, head, and body',
+                    insertText: [
+                        '<!DOCTYPE html>',
+                        '<html lang="en">',
+                        '<head>',
+                        '    <meta charset="UTF-8">',
+                        '    <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+                        '    <title>${1:Document}</title>',
+                        '</head>',
+                        '<body>',
+                        '    $0',
+                        '</body>',
+                        '</html>'
+                    ].join('\n'),
+                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                    range,
+                    sortText: '0' // Show at top
+                }]
+            };
+        }
+    });
 };
 
 const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, language = 'javascript', fileName }) => {
