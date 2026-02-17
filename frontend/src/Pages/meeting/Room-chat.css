@@ -20,13 +20,13 @@
     margin-bottom: 15px; /* Space between form elements */
 }
 
-label {
+.form label {
     display: block; /* Make label a block element */
     margin-bottom: 5px; /* Space between label and input */
     font-weight: bold; /* Bold label text */
 }
 
-input {
+.form input {
     width: 95%; /* Full width input */
     padding: 10px; /* Padding inside the input */
     border:none; /* Light border */
@@ -34,7 +34,7 @@ input {
     font-size: 16px; /* Font size */
 }
 
-button {
+.form button {
     width: 100%; /* Full width button */
     padding: 10px; /* Padding inside the button */
     background-color: #007bff; /* Button color */
@@ -45,7 +45,7 @@ button {
     cursor: pointer; /* Pointer cursor on hover */
 }
 
-button:hover {
+.form button:hover {
     background-color: #0056b3; /* Darker button color on hover */
 }
 

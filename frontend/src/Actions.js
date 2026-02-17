@@ -22,6 +22,10 @@ const ACTIONS = {
   FILE_DELETE: "file-delete",
   FILE_SYNC: "file-sync",
   CODE_OUTPUT: "code-output",
+  CHAT_MESSAGE: "chat-message",
+  ACTIVITY_LOG: "activity-log",
+  TYPING_START: "typing-start",
+  TYPING_STOP: "typing-stop",
 };
 
 export default ACTIONS;

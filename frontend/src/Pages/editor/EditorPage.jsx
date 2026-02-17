@@ -2,13 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import Draggable from 'react-draggable';
+import PiPVideoWindow from '../../components/PiPVideoWindow';
 import ACTIONS from "../../Actions";
 import Client from '../../components/Client';
 import Editor from '../../components/Editor';
 import Output from '../../components/Output';
 import Whiteboard from '../../components/Whiteboard';
 import NovaAI from '../../components/NovaAI';
+import ChatPanel from '../../components/ChatPanel';
 import VideoCallModal from '../../components/VideoCallModal';
 import SimpleWebRTC from '../../components/SimpleWebRTC';
 import { initSocket } from "../../socket";
@@ -123,6 +124,15 @@ const EditorPage = () => {
   // Nova AI state
   const [showNovaAI, setShowNovaAI] = useState(false);
 
+  // Chat panel state
+  const [showChat, setShowChat] = useState(false);
+  const [isHost, setIsHost] = useState(false);
+  const [typingUsers, setTypingUsers] = useState([]);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [activityLogs, setActivityLogs] = useState([]);
+  const typingTimeoutRef = useRef(null);
+  const isTypingRef = useRef(false);
+
 
   useEffect(() => {
     // Check if username exists in location.state or sessionStorage
@@ -190,10 +200,15 @@ const EditorPage = () => {
 
       socketRef.current.on(
         ACTIONS.JOINED,
-        ({ clients, username, socketId }) => {
-          if (username !== location.state?.username) {
-            toast.success(`${username} joined the room.`);
-            logger.log(`${username} joined`);
+        ({ clients, username: joinedUser, socketId, host }) => {
+          const myUsername = location.state?.username || sessionStorage.getItem(`username_${roomId}`);
+          if (joinedUser !== myUsername) {
+            toast.success(`${joinedUser} joined the room.`);
+            logger.log(`${joinedUser} joined`);
+          }
+          // Track host
+          if (host && host === myUsername) {
+            setIsHost(true);
           }
           // If Joined room person is show in your editor page
           setClients(clients);
@@ -203,6 +218,28 @@ const EditorPage = () => {
           });
         }
       );
+
+      // Typing indicators
+      socketRef.current.on(ACTIONS.TYPING_START, ({ username: typingUser }) => {
+        setTypingUsers(prev => {
+          if (prev.includes(typingUser)) return prev;
+          return [...prev, typingUser];
+        });
+      });
+
+      socketRef.current.on(ACTIONS.TYPING_STOP, ({ username: typingUser }) => {
+        setTypingUsers(prev => prev.filter(u => u !== typingUser));
+      });
+
+      // Chat messages
+      socketRef.current.on(ACTIONS.CHAT_MESSAGE, (data) => {
+        setChatMessages(prev => [...prev, data]);
+      });
+
+      // Activity logs
+      socketRef.current.on(ACTIONS.ACTIVITY_LOG, (data) => {
+        setActivityLogs(prev => [...prev, data]);
+      });
 
 
       // Listining for disconnected
@@ -1095,6 +1132,16 @@ const EditorPage = () => {
             <span className="tooltip">{isExecuting ? 'Running...' : 'Run Code'}</span>
           </button>
 
+          {/* Chat Button */}
+          <button 
+            className={`navbar-icon-btn ${showChat ? 'active' : ''}`}
+            onClick={() => setShowChat(!showChat)}
+            title="Chat"
+          >
+            <span style={{ fontSize: '16px' }}>💬</span>
+            <span className="tooltip">Chat</span>
+          </button>
+
           {/* Nova AI Button */}
           <button 
             className={`navbar-icon-btn ${showNovaAI ? 'active' : ''}`}
@@ -1344,6 +1391,11 @@ const EditorPage = () => {
                     {client.username.charAt(0).toUpperCase()}
                   </div>
                   <span className="user-name-small">{client.username}</span>
+                  {typingUsers.includes(client.username) && (
+                    <span className="typing-badge">
+                      <span className="typing-dots-small"><span></span><span></span><span></span></span>
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -1370,6 +1422,19 @@ const EditorPage = () => {
                       f.name === activeFile.name ? { ...f, content: code } : f
                     ));
                     saveFileToBackend(code);
+
+                    // Emit typing indicator
+                    if (socketRef.current && !isTypingRef.current) {
+                      isTypingRef.current = true;
+                      socketRef.current.emit(ACTIONS.TYPING_START, { roomId, username });
+                    }
+                    clearTimeout(typingTimeoutRef.current);
+                    typingTimeoutRef.current = setTimeout(() => {
+                      if (socketRef.current) {
+                        socketRef.current.emit(ACTIONS.TYPING_STOP, { roomId, username });
+                      }
+                      isTypingRef.current = false;
+                    }, 2000);
                   }}
                 />
               )}
@@ -1379,37 +1444,20 @@ const EditorPage = () => {
             <Whiteboard socketRef={socketRef} roomId={roomId} />
           )}
 
-          {/* Draggable Floating Video Call Window */}
+          {/* PiP-Style Floating Video Call Window */}
           {showVideoWindow && (
-            <Draggable handle=".drag-handle" defaultPosition={{ x: 20, y: 20 }} cancel=".no-drag">
-              <div 
-                className={`video-window ${isVideoMinimized ? 'minimized' : ''}`}
-              >
-                <div className="drag-handle video-header">
-                  <div className="video-header-left">
-                    <VideoCameraIcon size={16} />
-                    <span>Video Call</span>
-                    <span className="live-dot"></span>
-                  </div>
-                  <div className="video-header-actions no-drag">
-                    <button onClick={() => setIsVideoMinimized(!isVideoMinimized)}>
-                      {isVideoMinimized ? '□' : '−'}
-                    </button>
-                    <button onClick={() => setShowVideoWindow(false)}>×</button>
-                  </div>
-                </div>
-                {!isVideoMinimized && (
-                  <div className="video-content">
-                    <SimpleWebRTC
-                      socketRef={socketRef}
-                      roomId={roomId}
-                      participants={clients}
-                      onClose={leaveVideoCall}
-                    />
-                  </div>
-                )}
-              </div>
-            </Draggable>
+            <PiPVideoWindow
+              isMinimized={isVideoMinimized}
+              onToggleMinimize={() => setIsVideoMinimized(!isVideoMinimized)}
+              onClose={() => setShowVideoWindow(false)}
+            >
+              <SimpleWebRTC
+                socketRef={socketRef}
+                roomId={roomId}
+                participants={clients}
+                onClose={leaveVideoCall}
+              />
+            </PiPVideoWindow>
           )}
         </div>
       </div>
@@ -1420,6 +1468,30 @@ const EditorPage = () => {
         onClose={() => setShowNovaAI(false)}
         code={activeFile?.content || ''}
         language={activeFile?.language || 'javascript'}
+      />
+
+      {/* Chat Panel */}
+      <ChatPanel
+        isOpen={showChat}
+        onClose={() => setShowChat(false)}
+        socketRef={socketRef}
+        roomId={roomId}
+        username={username}
+        isHost={isHost}
+        messages={chatMessages}
+        activityLogs={activityLogs}
+        typingUsers={typingUsers}
+        onSendMessage={(text) => {
+          if (!socketRef.current) return;
+          const msgData = { username, message: text, timestamp: Date.now() };
+          socketRef.current.emit(ACTIONS.CHAT_MESSAGE, { roomId, ...msgData });
+          setChatMessages(prev => [...prev, msgData]);
+        }}
+        onClearLogs={() => {
+          setActivityLogs([]);
+          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+          fetch(`${backendUrl}/api/rooms/${roomId}/logs`, { method: 'DELETE' }).catch(() => {});
+        }}
       />
     </div>
   );

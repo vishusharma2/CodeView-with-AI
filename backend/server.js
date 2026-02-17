@@ -294,6 +294,19 @@ app.put("/api/rooms/:roomId/annotations", async (req, res) => {
 
 // Cleanup cron: Delete annotations inactive for 10 minutes
 // Run every 5 minutes
+// Activity Logs REST API (host-only)
+app.get("/api/rooms/:roomId/logs", (req, res) => {
+  const { roomId } = req.params;
+  const logs = roomActivityLogs.get(roomId) || [];
+  return res.json({ success: true, logs });
+});
+
+app.delete("/api/rooms/:roomId/logs", (req, res) => {
+  const { roomId } = req.params;
+  roomActivityLogs.set(roomId, []);
+  return res.json({ success: true });
+});
+
 setInterval(async () => {
   try {
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
@@ -704,6 +717,19 @@ app.post("/api/execute-code", async (req, res) => {
  ************************************************************/
 
 const userSocketMap = {};
+const roomHosts = new Map(); // roomId -> username (first joiner)
+const roomActivityLogs = new Map(); // roomId -> array of log entries
+
+// Helper: add activity log and broadcast to room
+function addActivityLog(roomId, type, username, details) {
+  const logEntry = { type, username, details, timestamp: Date.now() };
+  if (!roomActivityLogs.has(roomId)) {
+    roomActivityLogs.set(roomId, []);
+  }
+  roomActivityLogs.get(roomId).push(logEntry);
+  // Broadcast to all in room
+  io.to(roomId).emit(ACTIONS.ACTIVITY_LOG, logEntry);
+}
 
 function getAllConnectedClients(roomId) {
   return Array.from(io.sockets.adapter.rooms.get(roomId) || []).map(socketId => {
@@ -724,15 +750,26 @@ io.on("connection", (socket) => {
     userSocketMap[socket.id] = username;
     socket.join(roomId);
 
+    // Track room host (first joiner)
+    if (!roomHosts.has(roomId)) {
+      roomHosts.set(roomId, username);
+      logger.log(`👑 ${username} is host of room ${roomId}`);
+    }
+
     const clients = getAllConnectedClients(roomId);
+    const host = roomHosts.get(roomId);
 
     clients.forEach(({ socketId }) => {
       io.to(socketId).emit(ACTIONS.JOINED, {
         clients,
         username,
         socketId: socket.id,
+        host, // send host info
       });
     });
+
+    // Activity log
+    addActivityLog(roomId, 'join', username, 'joined the room');
   });
 
   /**************** CODE SYNC *****************/
@@ -747,6 +784,7 @@ io.on("connection", (socket) => {
   /**************** LANGUAGE SYNC *****************/
   socket.on(ACTIONS.LANGUAGE_CHANGE, ({ roomId, language }) => {
     socket.to(roomId).emit(ACTIONS.LANGUAGE_CHANGE, { language });
+    addActivityLog(roomId, 'language-change', userSocketMap[socket.id], `changed language to "${language}"`);
   });
 
   /**************** CURSOR POSITION SYNC *****************/
@@ -765,12 +803,12 @@ io.on("connection", (socket) => {
   /**************** VIDEO CALL HANDLERS *****************/
   socket.on(ACTIONS.VIDEO_CALL_INVITE, ({ roomId, initiator }) => {
     logger.log(`📞 [SERVER] Received VIDEO_CALL_INVITE from ${initiator} for room ${roomId}`);
-    // Broadcast video call invitation to all other members in the room
     socket.to(roomId).emit(ACTIONS.VIDEO_CALL_INVITE, { 
       initiator,
       roomId 
     });
     logger.log(`📞 [SERVER] Broadcasted VIDEO_CALL_INVITE to room ${roomId}`);
+    addActivityLog(roomId, 'video-call', initiator, 'started a video call');
   });
 
   socket.on(ACTIONS.VIDEO_CALL_RESPONSE, ({ roomId, username, accepted }) => {
@@ -794,6 +832,7 @@ io.on("connection", (socket) => {
       accepted 
     });
     logger.log(`📞 [SERVER] Broadcasted VIDEO_CALL_RESPONSE to room ${roomId}`);
+    addActivityLog(roomId, 'video-call', username, accepted ? 'joined the video call' : 'declined the video call');
   });
   
 
@@ -824,6 +863,7 @@ io.on("connection", (socket) => {
       // Notify remaining members that this user left
       io.to(roomId).emit(ACTIONS.VIDEO_CALL_LEAVE, { username });
     }
+    addActivityLog(roomId, 'video-call', username, 'left the video call');
   });
 
   socket.on(ACTIONS.VIDEO_CALL_END, ({ roomId }) => {
@@ -880,44 +920,73 @@ io.on("connection", (socket) => {
   });
 
   socket.on(ACTIONS.WHITEBOARD_CLEAR, ({ roomId }) => {
-    // Broadcast clear event to all other users in room
     socket.to(roomId).emit(ACTIONS.WHITEBOARD_CLEAR);
+    addActivityLog(roomId, 'whiteboard', userSocketMap[socket.id], 'cleared the whiteboard');
   });
 
   /**************** FILE SYNC *****************/
   socket.on(ACTIONS.FILE_CREATE, ({ roomId, file }) => {
-    // Broadcast new file to all other users in room
     socket.to(roomId).emit(ACTIONS.FILE_CREATE, { file });
     logger.log(`📁 File created: ${file.name} in room ${roomId}`);
+    addActivityLog(roomId, 'file-create', userSocketMap[socket.id], `created file "${file.name}"`);
   });
 
   socket.on(ACTIONS.FILE_DELETE, ({ roomId, fileName }) => {
-    // Broadcast file deletion to all other users in room
     socket.to(roomId).emit(ACTIONS.FILE_DELETE, { fileName });
     logger.log(`🗑️ File deleted: ${fileName} in room ${roomId}`);
+    addActivityLog(roomId, 'file-delete', userSocketMap[socket.id], `deleted file "${fileName}"`);
   });
 
   socket.on(ACTIONS.FILE_SYNC, ({ roomId, files }) => {
-    // Sync files list to all other users in room
     socket.to(roomId).emit(ACTIONS.FILE_SYNC, { files });
   });
 
   /**************** CODE OUTPUT SYNC *****************/
   socket.on(ACTIONS.CODE_OUTPUT, ({ roomId, output, executedBy, fileName }) => {
-    // Broadcast code execution output to all other users in room
     socket.to(roomId).emit(ACTIONS.CODE_OUTPUT, { output, executedBy, fileName });
     logger.log(`▶️ Code executed by ${executedBy} in room ${roomId}`);
+    addActivityLog(roomId, 'code-run', executedBy, `ran code in "${fileName}"`);
+  });
+
+  /**************** CHAT & TYPING *****************/
+  socket.on(ACTIONS.CHAT_MESSAGE, ({ roomId, username, message, timestamp }) => {
+    socket.to(roomId).emit(ACTIONS.CHAT_MESSAGE, { username, message, timestamp });
+    addActivityLog(roomId, 'chat', username, `sent a message`);
+  });
+
+  socket.on(ACTIONS.TYPING_START, ({ roomId, username }) => {
+    socket.to(roomId).emit(ACTIONS.TYPING_START, { username });
+  });
+
+  socket.on(ACTIONS.TYPING_STOP, ({ roomId, username }) => {
+    socket.to(roomId).emit(ACTIONS.TYPING_STOP, { username });
   });
 
   /**************** DISCONNECT LOGIC *****************/
   socket.on("disconnecting", () => {
     const rooms = [...socket.rooms].filter(r => r !== socket.id);
+    const disconnectedUser = userSocketMap[socket.id];
 
     rooms.forEach(roomId => {
       socket.to(roomId).emit(ACTIONS.DISCONNECTED, {
         socketId: socket.id,
-        username: userSocketMap[socket.id],
+        username: disconnectedUser,
       });
+
+      // Activity log
+      if (disconnectedUser) {
+        addActivityLog(roomId, 'leave', disconnectedUser, 'left the room');
+      }
+
+      // Check if room is now empty -> cleanup host & logs
+      const remainingClients = getAllConnectedClients(roomId).filter(
+        c => c.socketId !== socket.id
+      );
+      if (remainingClients.length === 0) {
+        roomHosts.delete(roomId);
+        roomActivityLogs.delete(roomId);
+        logger.log(`🧹 Cleaned up host & logs for empty room ${roomId}`);
+      }
     });
   });
 
