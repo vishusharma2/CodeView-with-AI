@@ -87,9 +87,13 @@ const Whiteboard = ({ socketRef, roomId }) => {
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const token = localStorage.getItem('codeview-token');
         await fetch(`${backendUrl}/api/rooms/${roomId}/annotations`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ drawingData: pagesRef.current })
         });
         logger.log('📝 Annotations saved');
@@ -118,7 +122,12 @@ const Whiteboard = ({ socketRef, roomId }) => {
     const loadAnnotations = async () => {
       try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-        const response = await fetch(`${backendUrl}/api/rooms/${roomId}/annotations`);
+        const token = localStorage.getItem('codeview-token');
+        const response = await fetch(`${backendUrl}/api/rooms/${roomId}/annotations`, {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+        });
         const data = await response.json();
         
         if (data.success && data.drawingData && data.drawingData.length > 0) {

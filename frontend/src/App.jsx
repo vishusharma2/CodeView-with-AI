@@ -6,6 +6,7 @@ import MeetingLogin from './Pages/meeting/MeetingLogin';
 import MeetingPage from './Pages/meeting/MeetingPage';
 import NewRoom from './Pages/home/NewRoom';
 import PasswordVerify from './Pages/home/PasswordVerify';
+import NotFound from './Pages/notfound/NotFound';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -29,8 +30,8 @@ function App() {
           <Route path="/meetinglogin" element={<MeetingLogin />} />
           <Route path="/room/:roomId" element={<MeetingPage />} />
 
-          {/* Add this so your users don’t land in hell when visiting a wrong URL */}
-          <Route path="*" element={<div>404 — Page Not Found</div>} />
+          {/* 404 Page */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>
     </>

@@ -41,7 +41,16 @@ import {
 }
   from 'react-router-dom';
 
-// THIS IS MAIN PAGE  
+// THIS IS MAIN PAGE
+
+// Helper: Get auth headers for API calls
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('codeview-token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+};
 
 // Valid file extensions mapping
 const VALID_EXTENSIONS = {
@@ -145,8 +154,12 @@ const EditorPage = () => {
       // Store in sessionStorage for page refreshes
       sessionStorage.setItem(`username_${roomId}`, currentUsername);
     } else {
-      // If no username, redirect to password verification
-      // This handles the case when someone directly accesses the editor URL
+      // If no username or no token, redirect to password verification
+      reactNavigator(`/verify-password/${roomId}`);
+    }
+
+    // Also check for JWT token
+    if (!localStorage.getItem('codeview-token')) {
       reactNavigator(`/verify-password/${roomId}`);
     }
   }, [roomId, location.state, reactNavigator]);
@@ -158,7 +171,9 @@ const EditorPage = () => {
     const loadFiles = async () => {
       try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
-        const response = await fetch(`${backendUrl}/api/rooms/${roomId}/files`);
+        const response = await fetch(`${backendUrl}/api/rooms/${roomId}/files`, {
+          headers: getAuthHeaders(),
+        });
         if (response.ok) {
           const data = await response.json();
           if (data.files && data.files.length > 0) {
@@ -455,7 +470,7 @@ const EditorPage = () => {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
         await fetch(`${backendUrl}/api/rooms/${roomId}/files/${encodeURIComponent(activeFile.name)}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ content })
         });
         logger.log('File saved:', activeFile.name);
@@ -498,7 +513,7 @@ const EditorPage = () => {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
       const response = await fetch(`${backendUrl}/api/rooms/${roomId}/files`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ name })
       });
       
@@ -570,7 +585,7 @@ const EditorPage = () => {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
         const response = await fetch(`${backendUrl}/api/rooms/${roomId}/files`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ name })
         });
 
@@ -583,7 +598,7 @@ const EditorPage = () => {
         // Save content to backend
         await fetch(`${backendUrl}/api/rooms/${roomId}/files/${encodeURIComponent(name)}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ content })
         });
 
@@ -619,7 +634,8 @@ const EditorPage = () => {
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
       const response = await fetch(`${backendUrl}/api/rooms/${roomId}/files/${encodeURIComponent(fileName)}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       
       if (response.ok) {
@@ -938,9 +954,7 @@ const EditorPage = () => {
     try {
       const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/execute-code`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           code,
           language: activeFile.language,
@@ -998,83 +1012,25 @@ const EditorPage = () => {
 
       {/* Rejoin Request Modal (Host Only) */}
       {showRejoinRequest && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10000,
-        }}>
-          <div style={{
-            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-            borderRadius: '16px',
-            padding: '32px',
-            width: '400px',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-          }}>
-            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-              <div style={{
-                fontSize: '48px',
-                marginBottom: '16px',
-              }}>🔔</div>
-              <h3 style={{
-                color: 'white',
-                fontSize: '20px',
-                fontWeight: '600',
-                marginBottom: '8px',
-              }}>Rejoin Request</h3>
-              <p style={{
-                color: '#94a3b8',
-                fontSize: '15px',
-              }}>
-                <strong style={{ color: '#06b6d4' }}>{rejoinRequester}</strong> wants to rejoin the call
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[10000]">
+          <div className="bg-[linear-gradient(135deg,#1e293b_0%,#0f172a_100%)] rounded-2xl p-8 w-[400px] shadow-[0_20px_60px_rgba(0,0,0,0.5)] border border-white/10">
+            <div className="text-center mb-6">
+              <div className="text-5xl mb-4">🔔</div>
+              <h3 className="text-white text-xl font-semibold mb-2">Rejoin Request</h3>
+              <p className="text-slate-400 text-[15px]">
+                <strong className="text-cyan-400">{rejoinRequester}</strong> wants to rejoin the call
               </p>
             </div>
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-            }}>
+            <div className="flex gap-3">
               <button
                 onClick={handleDenyRejoin}
-                style={{
-                  flex: 1,
-                  padding: '12px 24px',
-                  background: '#ef4444',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '15px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
+                className="flex-1 py-3 px-6 bg-red-500 border-none rounded-lg text-white text-[15px] font-semibold cursor-pointer transition-all duration-200 hover:bg-red-600"
               >
                 Deny
               </button>
               <button
                 onClick={handleApproveRejoin}
-                style={{
-                  flex: 1,
-                  padding: '12px 24px',
-                  background: '#10b981',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '15px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
+                className="flex-1 py-3 px-6 bg-emerald-500 border-none rounded-lg text-white text-[15px] font-semibold cursor-pointer transition-all duration-200 hover:bg-emerald-600"
               >
                 Approve
               </button>
@@ -1100,11 +1056,10 @@ const EditorPage = () => {
           {/* Video Call */}
           {!inVideoCall ? (
             <button 
-              className={`navbar-icon-btn ${rejoinAttempts >= 3 ? 'disabled' : ''}`}
+              className={`navbar-icon-btn ${rejoinAttempts >= 3 ? 'disabled opacity-50 !cursor-not-allowed' : ''}`}
               onClick={startVideoCall}
               disabled={rejoinAttempts >= 3}
               title={rejoinAttempts >= 3 ? "Blocked from call (3 denied attempts)" : "Start Video Call"}
-              style={rejoinAttempts >= 3 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
             >
               <VideoCameraIcon />
               <span className="tooltip">{rejoinAttempts >= 3 ? 'Blocked (3 attempts)' : 'Video Call'}</span>
@@ -1138,7 +1093,7 @@ const EditorPage = () => {
             onClick={() => setShowChat(!showChat)}
             title="Chat"
           >
-            <span style={{ fontSize: '16px' }}>💬</span>
+            <span className="text-base">💬</span>
             <span className="tooltip">Chat</span>
           </button>
 
@@ -1251,7 +1206,7 @@ const EditorPage = () => {
                   ref={fileInputRef}
                   type="file"
                   accept=".js,.py,.java,.cpp,.c,.rb,.php,.go,.rs,.ts,.html,.css"
-                  style={{ display: 'none' }}
+                  className="hidden"
                   onChange={uploadFile}
                 />
               </div>
@@ -1296,26 +1251,11 @@ const EditorPage = () => {
                 </div>
                 {/* Call Control Buttons */}
                 {inVideoCall && (
-                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 8px' }}>
+                  <div className="mt-3 flex flex-col gap-2 px-2">
                     <button 
                       onClick={leaveVideoCall}
                       title="Leave the call (only you)"
-                      style={{
-                        padding: '8px 12px',
-                        background: '#f59e0b',
-                        border: 'none',
-                        borderRadius: '6px',
-                        color: 'white',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        fontWeight: '500',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#d97706'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = '#f59e0b'}
+                      className="py-2 px-3 bg-amber-500 border-none rounded-md text-white cursor-pointer text-[13px] font-medium flex items-center gap-1.5 transition-all duration-200 hover:bg-amber-600"
                     >
                       <PhoneEndIcon />
                       Leave Call
@@ -1324,22 +1264,7 @@ const EditorPage = () => {
                       <button 
                         onClick={endVideoCall}
                         title="End the call for everyone"
-                        style={{
-                          padding: '8px 12px',
-                          background: '#ef4444',
-                          border: 'none',
-                          borderRadius: '6px',
-                          color: 'white',
-                          cursor: 'pointer',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
+                        className="py-2 px-3 bg-red-500 border-none rounded-md text-white cursor-pointer text-[13px] font-medium flex items-center gap-1.5 transition-all duration-200 hover:bg-red-600"
                       >
                         <VideoOffIcon size={14} />
                         End Call (All)
@@ -1490,7 +1415,7 @@ const EditorPage = () => {
         onClearLogs={() => {
           setActivityLogs([]);
           const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-          fetch(`${backendUrl}/api/rooms/${roomId}/logs`, { method: 'DELETE' }).catch(() => {});
+          fetch(`${backendUrl}/api/rooms/${roomId}/logs`, { method: 'DELETE', headers: getAuthHeaders() }).catch(() => {});
         }}
       />
     </div>

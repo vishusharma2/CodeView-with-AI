@@ -50,33 +50,35 @@ const NewRoom = () => {
     if (e.code === "Enter") createRoom();
   };
 
+  // Shared input classes
+  const inputClasses = "py-4 px-5 rounded-xl outline-none border-[1.5px] border-[var(--border-default)] bg-[var(--bg-input)] text-[var(--text-primary)] text-[15px] font-medium transition-all duration-200 placeholder:text-[var(--text-muted)] placeholder:font-normal placeholder:tracking-[0.3px] focus:border-[var(--accent)] focus:bg-[var(--bg-hover)] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.1)]";
+
   return (
-    <div className="flex items-center justify-center color-[#fff] h-[100vh] bg-[linear-gradient(135deg,#0a0e27_0%,#1a0b2e_50%,#160e30_100%)] position-relative overflow-hidden">
-      <div className="formWrapper">
+    <div className="flex items-center justify-center text-white h-screen bg-[linear-gradient(135deg,#0a0e27_0%,#1a0b2e_50%,#160e30_100%)] relative overflow-hidden">
+      <div className="bg-[var(--glass-bg)] backdrop-blur-[30px] p-12 rounded-3xl shadow-[0_20px_60px_var(--shadow-color),0_0_0_1px_var(--glass-border)] w-[480px] max-w-[90%] border border-[var(--glass-border)] relative z-1">
         <img
-          className="homePageLogo"
+          className="h-[135px] mx-auto block mb-6"
           src="/logo.png"
           alt="Logo"
         />
 
-        <h1 className="neonTitle">CREATE ROOM</h1>
-        <p className="neonSubtitle">Secure Collaborative Space</p>
+        <h1 className="font-['Space_Grotesk',_'Inter',_sans-serif] text-[56px] font-bold text-center m-0 mb-2 -tracking-[1px] bg-[linear-gradient(135deg,var(--text-primary)_0%,var(--text-secondary)_100%)] bg-clip-text text-transparent">CREATE ROOM</h1>
+        <p className="text-[15px] font-medium text-center mb-10 tracking-[0.5px] text-[var(--text-secondary)]">Secure Collaborative Space</p>
 
-        <h4 className="mainLabel">Setup Your Room</h4>
+        <h4 className="mb-2 mt-0 text-[13px] font-semibold text-center text-[var(--text-secondary)] uppercase tracking-[1.5px]">Setup Your Room</h4>
 
-        <div className="inputGroup">
+        <div className="flex flex-col gap-4">
           <input
             type="text"
-            className="inputBox"
+            className={`${inputClasses} opacity-70 cursor-not-allowed`}
             placeholder="ROOM ID (AUTO-GENERATED)"
             value={roomId}
             disabled
-            style={{ opacity: 0.7, cursor: "not-allowed" }}
           />
 
           <input
             type="text"
-            className="inputBox"
+            className={inputClasses}
             placeholder="USERNAME"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -85,29 +87,28 @@ const NewRoom = () => {
 
           <input
             type="password"
-            className="inputBox"
+            className={inputClasses}
             placeholder="ROOM PASSWORD"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyUp={handleInputEnter}
           />
 
-          <button 
-            onClick={createRoom} 
-            className="btn joinBtn neonBtn"
+          <button
+            onClick={createRoom}
+            className="w-full border-none py-4 px-6 rounded-xl text-[15px] font-semibold cursor-pointer transition-all duration-200 relative overflow-hidden tracking-[0.3px] bg-indigo-500 text-white hover:bg-violet-600 hover:-translate-y-px hover:shadow-[0_12px_24px_rgba(99,102,241,0.3)] active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={loading}
           >
-            <span className="btnText">
+            <span className="relative z-2">
               {loading ? "Creating..." : "Create Room"}
             </span>
-            <span className="btnGlow"></span>
           </button>
 
-          <span className="createInfo">
+          <span className="mx-auto mt-8 text-center text-sm font-normal text-[var(--text-secondary)]">
             Already have a room?&nbsp;
-            <button 
-              onClick={() => navigate("/")} 
-              className="createNewBtn neonLink"
+            <button
+              onClick={() => navigate("/")}
+              className="bg-transparent border-none text-indigo-500 no-underline font-semibold cursor-pointer p-0 text-sm tracking-[0.3px] transition-all duration-200 hover:text-indigo-400 hover:underline"
             >
               Join Room
             </button>
@@ -115,8 +116,8 @@ const NewRoom = () => {
         </div>
       </div>
 
-      <footer>
-        <h4 className="footerText">© 2026 CodedView. All rights reserved.</h4>
+      <footer className="fixed bottom-0 z-10">
+        <h4 className="text-[var(--text-secondary)] text-[13px] font-normal">© 2026 CodedView. All rights reserved.</h4>
       </footer>
     </div>
   );

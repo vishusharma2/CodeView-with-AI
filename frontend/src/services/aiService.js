@@ -8,10 +8,12 @@ export const getAISuggestion = async (code, cursorPosition, language) => {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
     logger.log('🤖 Requesting AI suggestion from:', backendUrl);
     
+    const token = localStorage.getItem('codeview-token');
     const response = await fetch(`${backendUrl}/api/ai/suggest`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ code, cursorPosition, language }),
     });
