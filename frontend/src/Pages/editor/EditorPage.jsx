@@ -202,7 +202,7 @@ const EditorPage = () => {
       function handleErrors(e) {
         logger.log('socket error', e);
         toast.error('Socket connection failed, try again later.');
-        reactNavigator('/');
+        reactNavigator('/join');
       }
 
       socketRef.current.emit(ACTIONS.JOIN, {
@@ -730,7 +730,7 @@ const EditorPage = () => {
     if (inVideoCall) {
       socketRef.current.emit(ACTIONS.VIDEO_CALL_LEAVE, { roomId, username });
     }
-    reactNavigator('/');
+    reactNavigator('/join');
   }
 
   const startVideoCall = async () => {
@@ -915,20 +915,59 @@ const EditorPage = () => {
       setHtmlPreview(null); // Clear first
       setOutput({});
 
-      // Collect CSS from other files in the room
+      // Collect CSS and JS files from the room
       const cssFiles = files.filter(f => f.name.endsWith('.css'));
-      let combinedCSS = cssFiles.map(f => f.content || '').join('\n');
+      const jsFiles = files.filter(f => f.name.endsWith('.js'));
 
-      // Inject CSS into HTML if not already linked
       let htmlContent = code;
-      if (combinedCSS && !htmlContent.includes('<style')) {
-        htmlContent = htmlContent.replace(
-          '</head>',
-          `<style>${combinedCSS}</style></head>`
-        );
-        // If no <head>, prepend the style
-        if (!htmlContent.includes('<head')) {
-          htmlContent = `<style>${combinedCSS}</style>${htmlContent}`;
+
+      // 1. Resolve <link rel="stylesheet" href="filename.css"> → inline <style>
+      htmlContent = htmlContent.replace(
+        /<link\s+[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*\/?>/gi,
+        (match, href) => {
+          const fileName = href.split('/').pop(); // strip any path
+          const found = cssFiles.find(f => f.name === fileName);
+          if (found && found.content) {
+            return `<style>/* ${fileName} */\n${found.content}\n</style>`;
+          }
+          return match; // keep original if file not found in room
+        }
+      );
+      // Also handle <link href="..." rel="stylesheet"> (reversed attribute order)
+      htmlContent = htmlContent.replace(
+        /<link\s+[^>]*href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*\/?>/gi,
+        (match, href) => {
+          const fileName = href.split('/').pop();
+          const found = cssFiles.find(f => f.name === fileName);
+          if (found && found.content) {
+            return `<style>/* ${fileName} */\n${found.content}\n</style>`;
+          }
+          return match;
+        }
+      );
+
+      // 2. Resolve <script src="filename.js"></script> → inline <script>
+      htmlContent = htmlContent.replace(
+        /<script\s+[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>/gi,
+        (match, src) => {
+          const fileName = src.split('/').pop();
+          const found = jsFiles.find(f => f.name === fileName);
+          if (found && found.content) {
+            return `<script>/* ${fileName} */\n${found.content}\n</script>`;
+          }
+          return match;
+        }
+      );
+
+      // 3. Auto-inject any CSS files that weren't explicitly linked
+      const alreadyInlined = cssFiles.filter(f => htmlContent.includes(`/* ${f.name} */`));
+      const unlinkedCSS = cssFiles.filter(f => !alreadyInlined.includes(f) && f.content);
+      if (unlinkedCSS.length > 0) {
+        const extraCSS = unlinkedCSS.map(f => `/* ${f.name} */\n${f.content}`).join('\n');
+        if (htmlContent.includes('</head>')) {
+          htmlContent = htmlContent.replace('</head>', `<style>${extraCSS}</style></head>`);
+        } else {
+          htmlContent = `<style>${extraCSS}</style>${htmlContent}`;
         }
       }
 

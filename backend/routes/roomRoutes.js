@@ -9,7 +9,7 @@ const { JWT_SECRET } = require("../middleware/auth");
 // POST: Create a new room
 router.post("/", async (req, res) => {
   try {
-    const { roomId, password } = req.body;
+    const { roomId, password, username } = req.body;
 
     if (!roomId || !password) {
       return res.status(400).json({ error: "roomId and password are required" });
@@ -32,10 +32,18 @@ router.post("/", async (req, res) => {
 
     await room.save();
 
+    // Issue JWT token for the creator
+    const token = jwt.sign(
+      { roomId, username: username || "anonymous" },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
     return res.json({ 
       success: true, 
       message: "Room created successfully",
-      roomId 
+      roomId,
+      token
     });
   } catch (err) {
     logger.error("Room creation error:", err);

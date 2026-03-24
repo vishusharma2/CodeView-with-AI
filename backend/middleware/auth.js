@@ -1,5 +1,4 @@
 const jwt = require("jsonwebtoken");
-const logger = require("../logger");
 
 const JWT_SECRET = process.env.JWT_SECRET || "codeview-dev-secret-change-in-production";
 
