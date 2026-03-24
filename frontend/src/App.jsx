@@ -1,6 +1,9 @@
 import './App.css';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import LandingPage from './Pages/landing/LandingPage';
+import FeaturesPage from './Pages/landing/FeaturesPage';
+import HowItWorksPage from './Pages/landing/HowItWorksPage';
+import ContactPage from './Pages/landing/ContactPage';
 import Home from './Pages/home/Home';
 import EditorPage from './Pages/editor/EditorPage';
 import MeetingLogin from './Pages/meeting/MeetingLogin';
@@ -26,6 +29,9 @@ function App() {
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AnimatedRoutes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="/join" element={<Home />} />
           <Route path="/new-room" element={<NewRoom />} />
           <Route path="/verify-password/:roomId" element={<PasswordVerify />} />

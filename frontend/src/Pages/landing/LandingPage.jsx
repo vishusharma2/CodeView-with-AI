@@ -1,15 +1,24 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import Navbar from "../../components/Navbar";
+import { ArrowRightIcon, ChevronDownIcon } from "../../components/Icons";
 
 const LandingPage = () => {
   const navigate = useNavigate();
   const heroRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+  const [fadeOut, setFadeOut] = useState(false);
 
   const handleGetStarted = () => navigate("/join");
 
-  const scrollToFeatures = () => {
-    document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
-  };
+  // Preloader timer
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFadeOut(true);
+      setTimeout(() => setLoading(false), 600);
+    }, 1800);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Parallax floating effect for hero mockup
   useEffect(() => {
@@ -25,23 +34,76 @@ const LandingPage = () => {
 
   return (
     <div className="landing-root">
-      {/* ========== NAVBAR ========== */}
-      <nav className="landing-nav">
-        <div className="landing-nav-inner">
-          <div className="landing-nav-left">
-            <img src="/icon.png" alt="CodeView" className="landing-nav-logo" />
-            <span className="landing-nav-title">CodeView</span>
+
+      {/* ========== PRELOADER ========== */}
+      {loading && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99999,
+          background: 'linear-gradient(135deg, #060918 0%, #0d1030 50%, #060918 100%)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '28px',
+          transition: 'opacity 0.6s ease, transform 0.6s ease',
+          opacity: fadeOut ? 0 : 1,
+          transform: fadeOut ? 'scale(1.05)' : 'scale(1)',
+        }}>
+          {/* Ambient glow */}
+          <div style={{ position:'absolute', width:'400px', height:'400px', borderRadius:'50%', background:'radial-gradient(circle, rgba(99,102,241,0.2), transparent 70%)', filter:'blur(100px)' }} />
+
+          {/* Spinner ring */}
+          <div style={{ position:'relative', width:'100px', height:'100px' }}>
+            <svg viewBox="0 0 100 100" style={{ position:'absolute', inset:0, width:'100%', height:'100%', animation:'preloaderSpin 1.2s linear infinite' }}>
+              <defs>
+                <linearGradient id="preloaderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#6366f1" />
+                  <stop offset="50%" stopColor="#8b5cf6" />
+                  <stop offset="100%" stopColor="#a855f7" />
+                </linearGradient>
+              </defs>
+              <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(99,102,241,0.1)" strokeWidth="3" />
+              <circle cx="50" cy="50" r="42" fill="none" stroke="url(#preloaderGrad)" strokeWidth="3"
+                strokeLinecap="round" strokeDasharray="200" strokeDashoffset="140"
+                style={{ animation:'preloaderDash 1.5s ease-in-out infinite' }} />
+            </svg>
+            {/* Logo inside ring */}
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <img src="/logo.png" alt="CodeView" style={{
+                width:'50px', height:'50px', objectFit:'contain',
+                filter:'drop-shadow(0 0 20px rgba(99,102,241,0.5))',
+                animation:'preloaderPulse 2s ease-in-out infinite',
+              }} />
+            </div>
           </div>
-          <div className="landing-nav-links">
-            <button onClick={scrollToFeatures} className="landing-nav-link">Features</button>
-            <button onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })} className="landing-nav-link">How it Works</button>
+
+          {/* Text */}
+          <span style={{
+            fontFamily:"'Space Grotesk','Inter',sans-serif", fontSize:'13px', fontWeight:600,
+            letterSpacing:'4px', textTransform:'uppercase',
+            background:'linear-gradient(90deg, rgba(255,255,255,0.4), #818cf8, #a78bfa, rgba(255,255,255,0.4))',
+            backgroundSize:'300% 100%', WebkitBackgroundClip:'text', backgroundClip:'text',
+            WebkitTextFillColor:'transparent', animation:'preloaderShimmer 2s ease-in-out infinite',
+          }}>
+            Loading
+          </span>
+
+          {/* Dots */}
+          <div style={{ display:'flex', gap:'6px' }}>
+            {[0,1,2].map(i => (
+              <div key={i} style={{
+                width:'6px', height:'6px', borderRadius:'50%', background:'#6366f1',
+                animation:`preloaderBounce 1.4s ease-in-out ${i * 0.16}s infinite`,
+              }} />
+            ))}
           </div>
-          <button onClick={handleGetStarted} className="landing-nav-cta">
-            Get Started
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </button>
+
+          <style>{`
+            @keyframes preloaderSpin { 100% { transform: rotate(360deg); } }
+            @keyframes preloaderDash { 0% { stroke-dashoffset: 200; } 50% { stroke-dashoffset: 60; } 100% { stroke-dashoffset: 200; } }
+            @keyframes preloaderPulse { 0%,100% { transform:scale(1); opacity:1; } 50% { transform:scale(1.08); opacity:0.8; } }
+            @keyframes preloaderShimmer { 0% { background-position:100% 50%; } 100% { background-position:-100% 50%; } }
+            @keyframes preloaderBounce { 0%,80%,100% { transform:scale(0); opacity:0.3; } 40% { transform:scale(1); opacity:1; } }
+          `}</style>
         </div>
-      </nav>
+      )}
+      <Navbar />
 
       {/* ========== HERO ========== */}
       <section className="landing-hero">
@@ -67,11 +129,11 @@ const LandingPage = () => {
           <div className="landing-hero-actions">
             <button onClick={handleGetStarted} className="landing-btn-primary" id="get-started-hero">
               Get Started
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              <ArrowRightIcon size={18} />
             </button>
-            <button onClick={scrollToFeatures} className="landing-btn-secondary">
+            <button onClick={() => navigate("/features")} className="landing-btn-secondary">
               Learn More
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              <ChevronDownIcon size={18} />
             </button>
           </div>
         </div>
@@ -117,113 +179,6 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* ========== FEATURES ========== */}
-      <section className="landing-features" id="features">
-        <div className="landing-section-header">
-          <span className="landing-section-label">Features</span>
-          <h2 className="landing-section-title">Everything you need to code together</h2>
-          <p className="landing-section-desc">Powerful tools built for modern development teams</p>
-        </div>
-
-        <div className="landing-features-grid">
-          {[
-            {
-              icon: (
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              ),
-              title: "Real-time Collaboration",
-              description: "Code together with live cursor tracking, instant syncing, and seamless multi-user editing — just like Google Docs for code.",
-              color: "#6366f1",
-            },
-            {
-              icon: (
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a5 5 0 0 1 5 5c0 2-1.5 3.5-3 4.5V13H10v-1.5C8.5 10.5 7 9 7 7a5 5 0 0 1 5-5Z"/><path d="M10 17h4"/><path d="M10 21h4"/><path d="M10 13h4v4h-4z"/></svg>
-              ),
-              title: "AI Code Assistant",
-              description: "Get intelligent suggestions, debug faster, and generate code with the built-in AI assistant that understands your entire project context.",
-              color: "#f59e0b",
-            },
-            {
-              icon: (
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="22" opacity="0.3"/></svg>
-              ),
-              title: "Multi-Language Support",
-              description: "Write in Python, JavaScript, C++, Java, Go, Rust and many more — with syntax highlighting, IntelliSense, and one-click execution.",
-              color: "#10b981",
-            },
-            {
-              icon: (
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
-              ),
-              title: "Built-in Video Calls",
-              description: "Jump on a video call without leaving the editor. Perfect for pair programming, code reviews, and technical interviews.",
-              color: "#ec4899",
-            },
-          ].map((feature, i) => (
-            <div key={i} className="landing-feature-card" style={{ "--card-accent": feature.color }}>
-              <div className="feature-icon-wrap" style={{ background: `${feature.color}15`, color: feature.color }}>
-                {feature.icon}
-              </div>
-              <h3 className="feature-card-title">{feature.title}</h3>
-              <p className="feature-card-desc">{feature.description}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ========== HOW IT WORKS ========== */}
-      <section className="landing-how-it-works" id="how-it-works">
-        <div className="landing-section-header">
-          <span className="landing-section-label">How it works</span>
-          <h2 className="landing-section-title">Start coding in seconds</h2>
-          <p className="landing-section-desc">Three simple steps to begin collaborating</p>
-        </div>
-
-        <div className="landing-steps">
-          {[
-            {
-              step: "01",
-              title: "Create a Room",
-              desc: "Set up a private coding room with one click. Choose your language and configure settings.",
-              icon: (
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-              ),
-            },
-            {
-              step: "02",
-              title: "Share the Link",
-              desc: "Invite teammates by sharing the room ID. They join instantly — no sign-up required.",
-              icon: (
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-              ),
-            },
-            {
-              step: "03",
-              title: "Start Building",
-              desc: "Write, run and debug code together in real time with AI assistance and video calls.",
-              icon: (
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-              ),
-            },
-          ].map((s, i) => (
-            <div key={i} className="landing-step-card">
-              <div className="step-number">{s.step}</div>
-              <div className="step-icon-wrap">{s.icon}</div>
-              <h3 className="step-title">{s.title}</h3>
-              <p className="step-desc">{s.desc}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="landing-cta-bottom">
-          <button onClick={handleGetStarted} className="landing-btn-primary landing-btn-lg" id="get-started-bottom">
-            Get Started — It's Free
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </button>
-        </div>
-      </section>
-
-      {/* ========== FOOTER ========== */}
       <footer className="landing-footer">
         <div className="landing-footer-inner">
           <div className="landing-footer-brand">
