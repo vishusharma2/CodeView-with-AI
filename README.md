@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="#-features">Features</a> •
-  <a href="#-tech-stack">Tech Stack</a> •
-  <a href="#-getting-started">Getting Started</a> •
-  <a href="#-project-structure">Project Structure</a> •
-  <a href="#-documentation">Docs</a> •
+  <a href="#-features">Features</a> &bull;
+  <a href="#%EF%B8%8F-tech-stack">Tech Stack</a> &bull;
+  <a href="#-getting-started">Getting Started</a> &bull;
+  <a href="#-project-structure">Project Structure</a> &bull;
+  <a href="#-documentation">Docs</a> &bull;
   <a href="#-contributors">Contributors</a>
 </p>
 
@@ -53,7 +53,7 @@
 | **AI** | Google Gemini API |
 | **Code Execution** | Judge0 API / JDoodle API |
 | **Auth** | JWT + bcrypt |
-| **Deployment** | Vercel (frontend) · Render (backend) |
+| **Deployment** | Vercel (frontend), Render (backend) |
 
 ---
 
@@ -68,7 +68,7 @@
 
 ### Installation
 
-`ash
+```bash
 # 1. Clone
 git clone https://github.com/vishusharma2/CodeView-with-AI.git
 cd CodeView-with-AI
@@ -78,36 +78,36 @@ cd backend && npm install
 
 # 3. Install frontend
 cd ../frontend && npm install
-`
+```
 
 ### Environment Variables
 
-**ackend/.env**
+**`backend/.env`**
 
-`env
+```env
 PORT=5000
 MONGODB_URI=your_mongodb_connection_string
 JWT_SECRET=your_jwt_secret
 GEMINI_API_KEY=your_gemini_api_key
 JUDGE0_API_KEY=your_judge0_api_key
 JUDGE0_API_HOST=judge0-ce.p.rapidapi.com
-`
+```
 
-**rontend/.env**
+**`frontend/.env`**
 
-`env
+```env
 VITE_BACKEND_URL=http://localhost:5000
-`
+```
 
 ### Run Locally
 
-`ash
+```bash
 # Terminal 1 — Backend
 cd backend && npm start
 
 # Terminal 2 — Frontend
 cd frontend && npm run dev
-`
+```
 
 Open **http://localhost:5173** in your browser.
 
@@ -115,52 +115,91 @@ Open **http://localhost:5173** in your browser.
 
 ## 📁 Project Structure
 
-`
+```
 codeview-main/
-├── frontend/
-│   └── src/
-│       ├── components/
-│       │   ├── Editor.jsx           # Monaco editor with cursor sync & IntelliSense
-│       │   ├── ChatPanel.jsx        # Chat + activity logs slide-out panel
-│       │   ├── NovaAI.jsx           # AI assistant panel (Gemini)
-│       │   ├── Whiteboard.jsx       # Multi-page shared whiteboard
-│       │   ├── SimpleWebRTC.jsx     # WebRTC video call logic
-│       │   ├── PiPVideoWindow.jsx   # Draggable PiP video window
-│       │   ├── VideoCallModal.jsx   # Video call invite modal
-│       │   ├── Output.jsx           # Code execution output panel
-│       │   ├── Navbar.jsx           # Landing page navigation
-│       │   ├── AnimatedRoutes.jsx   # Page transition animations
-│       │   └── Icons.jsx            # SVG icon components
-│       ├── Pages/
-│       │   ├── landing/             # Landing, Features, HowItWorks, Contact
-│       │   ├── home/                # Join room, Create room, Password verify
-│       │   ├── editor/              # Main collaborative editor page
-│       │   ├── meeting/             # Meeting room pages
-│       │   └── notfound/            # 404 page with glitch effects
-│       ├── context/ThemeContext.jsx  # Light/dark theme provider
-│       ├── services/aiService.js    # Gemini AI API integration
-│       ├── Actions.js               # Socket.IO event constants
-│       └── App.jsx                  # Route definitions
-├── backend/
-│   ├── server.js                    # Express + Socket.IO server
-│   ├── socket/socketHandler.js      # All socket event handlers
-│   ├── middleware/auth.js           # JWT authentication middleware
-│   ├── routes/
-│   │   ├── roomRoutes.js            # Room CRUD + password verification
-│   │   ├── fileRoutes.js            # Multi-file management
-│   │   ├── executeRoutes.js         # Code execution endpoint
-│   │   ├── novaAiRoutes.js          # Nova AI chat endpoint
-│   │   ├── aiRoutes.js              # AI code suggestions endpoint
-│   │   └── annotationRoutes.js      # Whiteboard annotation storage
-│   ├── models/
-│   │   ├── Room.js                  # Room schema (roomId, password, files)
-│   │   └── Annotation.js            # Whiteboard annotation schema
-│   ├── judge0Config.js              # Judge0 API language mappings
-│   └── jdoodleConfig.js             # JDoodle API integration
-├── docs/
-│   └── FEATURES.md                  # Detailed feature documentation
-└── README.md
-`
+|-- frontend/
+|   |-- src/
+|       |-- components/
+|       |   |-- Editor.jsx
+|       |   |-- ChatPanel.jsx
+|       |   |-- NovaAI.jsx
+|       |   |-- Whiteboard.jsx
+|       |   |-- SimpleWebRTC.jsx
+|       |   |-- PiPVideoWindow.jsx
+|       |   |-- VideoCallModal.jsx
+|       |   |-- Output.jsx
+|       |   |-- Navbar.jsx
+|       |   |-- AnimatedRoutes.jsx
+|       |   +-- Icons.jsx
+|       |-- Pages/
+|       |   |-- landing/
+|       |   |-- home/
+|       |   |-- editor/
+|       |   |-- meeting/
+|       |   +-- notfound/
+|       |-- context/
+|       |-- services/
+|       |-- Actions.js
+|       +-- App.jsx
+|-- backend/
+|   |-- server.js
+|   |-- socket/
+|   |   +-- socketHandler.js
+|   |-- middleware/
+|   |   +-- auth.js
+|   |-- routes/
+|   |   |-- roomRoutes.js
+|   |   |-- fileRoutes.js
+|   |   |-- executeRoutes.js
+|   |   |-- novaAiRoutes.js
+|   |   |-- aiRoutes.js
+|   |   +-- annotationRoutes.js
+|   |-- models/
+|   |   |-- Room.js
+|   |   +-- Annotation.js
+|   |-- judge0Config.js
+|   +-- jdoodleConfig.js
+|-- docs/
+|   +-- FEATURES.md
++-- README.md
+```
+
+<details>
+<summary><strong>File Descriptions</strong></summary>
+
+| File | Description |
+|------|-------------|
+| **Frontend — Components** | |
+| `Editor.jsx` | Monaco editor with cursor sync & IntelliSense |
+| `ChatPanel.jsx` | Chat + activity logs slide-out panel |
+| `NovaAI.jsx` | AI assistant panel (Google Gemini) |
+| `Whiteboard.jsx` | Multi-page shared whiteboard |
+| `SimpleWebRTC.jsx` | WebRTC video call logic |
+| `PiPVideoWindow.jsx` | Draggable Picture-in-Picture video window |
+| `VideoCallModal.jsx` | Video call invite/accept/decline modal |
+| `Output.jsx` | Code execution output & HTML preview panel |
+| **Frontend — Pages** | |
+| `landing/` | Landing, Features, HowItWorks, Contact pages |
+| `home/` | Join room, Create room, Password verify |
+| `editor/` | Main collaborative editor page |
+| `meeting/` | Meeting room pages |
+| `notfound/` | 404 page with glitch effects |
+| **Backend — Core** | |
+| `server.js` | Express + Socket.IO server |
+| `socketHandler.js` | All socket event handlers |
+| `auth.js` | JWT authentication middleware |
+| **Backend — Routes** | |
+| `roomRoutes.js` | Room CRUD + password verification |
+| `fileRoutes.js` | Multi-file management |
+| `executeRoutes.js` | Code execution endpoint |
+| `novaAiRoutes.js` | Nova AI chat endpoint |
+| `aiRoutes.js` | AI inline suggestions endpoint |
+| `annotationRoutes.js` | Whiteboard annotation storage |
+| **Backend — Models** | |
+| `Room.js` | Room schema (roomId, password, files) |
+| `Annotation.js` | Whiteboard annotation schema |
+
+</details>
 
 ---
 
@@ -173,8 +212,8 @@ Detailed feature documentation is available at **[docs/FEATURES.md](docs/FEATURE
 ## 👥 Contributors
 
 | | Name | Role | Links |
-|-|------|------|-------|
-| 🟣 | **Vishu Sharma** | Full-Stack Developer & Creator | [GitHub](https://github.com/vishusharma2) · [LinkedIn](https://www.linkedin.com/in/vis-sha/) · [Portfolio](https://portfolio-sigma-ruddy-79.vercel.app/) |
+|---|------|------|-------|
+| 🟣 | **Vishu Sharma** | Creator & Full-Stack Developer | [GitHub](https://github.com/vishusharma2) · [LinkedIn](https://www.linkedin.com/in/vis-sha/) · [Portfolio](https://portfolio-sigma-ruddy-79.vercel.app/) |
 | 🟢 | **Priyanka Kumari** | Full-Stack Developer & Partner | [GitHub](https://github.com/Priyanka7081) · [LinkedIn](https://www.linkedin.com/in/priyanka-fullstack-developer/) |
 | 🔵 | **Shivam Kumar** | Developer & Partner | [GitHub](https://github.com/Shivam1327) · [LinkedIn](https://www.linkedin.com/in/shivamkr1327/) |
 
