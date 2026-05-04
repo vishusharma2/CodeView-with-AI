@@ -10,13 +10,18 @@ const logger = require("./logger");
 /************************************************************
  * Database Connection
  ************************************************************/
-mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/codeview")
-.then(() => logger.log("✅ MongoDB connected successfully"))
-.catch((err) => {
-  logger.error("❌ MongoDB connection error:", err.message);
-  logger.log("⚠️  Server will continue running, but database features may not work.");
-  logger.log("💡 Please check your MongoDB connection string or ensure your MongoDB cluster is running.");
-});
+mongoose
+  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/codeview")
+  .then(() => logger.log("✅ MongoDB connected successfully"))
+  .catch((err) => {
+    logger.error("❌ MongoDB connection error:", err.message);
+    logger.log(
+      "⚠️  Server will continue running, but database features may not work.",
+    );
+    logger.log(
+      "💡 Please check your MongoDB connection string or ensure your MongoDB cluster is running.",
+    );
+  });
 
 /************************************************************
  * Server & Socket.IO Setup
@@ -34,10 +39,12 @@ const io = new Server(server, {
 /************************************************************
  * Middleware
  ************************************************************/
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  }),
+);
 
 app.use(express.json());
 
@@ -75,4 +82,22 @@ initSocketHandlers(io);
  * Start Server
  ************************************************************/
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => logger.log(`Server is running on port ${PORT}`));
+server.listen(PORT, () => {
+  logger.log(`Server is running on port ${PORT}`);
+
+  const RENDER_URL = process.env.RENDER_URL;
+  if (RENDER_URL) {
+    const pingUrl = `${RENDER_URL}/health`;
+    const pingInterval = 10 * 60 * 1000;
+
+    setInterval(() => {
+      fetch(pingUrl)
+        .then((res) => logger.log(`🏓 Keep-alive ping: ${res.status}`))
+        .catch((err) =>
+          logger.error(`🏓 Keep-alive ping failed:`, err.message),
+        );
+    }, pingInterval);
+
+    logger.log(`🏓 Keep-alive enabled — pinging ${pingUrl} every 10 minutes`);
+  }
+});
