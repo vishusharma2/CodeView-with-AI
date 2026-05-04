@@ -237,14 +237,24 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
                         // Get content from start of line to cursor
                         const linePrefix = lineContent.substring(0, currentPosition.column - 1);
                         
-                        // Check if suggestion starts with what we already typed
-                        let displayText = suggestion;
+                        // Get full code from start of file to cursor for matching
+                        const fullCodeBefore = model.getValueInRange({
+                            startLineNumber: 1,
+                            startColumn: 1,
+                            endLineNumber: currentPosition.lineNumber,
+                            endColumn: currentPosition.column
+                        });
                         
-                        // If suggestion starts with the line prefix, strip it
-                        if (suggestion.startsWith(linePrefix)) {
-                            displayText = suggestion.substring(linePrefix.length);
-                        } else if (suggestion.startsWith(lineContent.trim())) {
-                             displayText = suggestion.substring(lineContent.trim().length);
+                        // Determine what to append after cursor
+                        // Normalize line endings (Windows \r\n vs \n)
+                        let displayText = suggestion.replace(/\r\n/g, '\n');
+                        const normalizedPrefix = linePrefix.replace(/\r\n/g, '\n');
+                        
+                        // If suggestion still starts with what's already typed, strip it
+                        if (normalizedPrefix.length > 0 && displayText.startsWith(normalizedPrefix)) {
+                            displayText = displayText.substring(normalizedPrefix.length);
+                        } else if (normalizedPrefix.trim().length > 0 && displayText.startsWith(normalizedPrefix.trim())) {
+                            displayText = displayText.substring(normalizedPrefix.trim().length);
                         }
 
                         // Don't show if there's nothing new to add
@@ -252,7 +262,8 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
                              return;
                         }
 
-                        setAiSuggestion(suggestion); // Keep full suggestion for Tab completion
+                        // Store just the text to append at cursor
+                        setAiSuggestion(displayText);
                         const pos = editorRef.current.getPosition();
                         
                         // Extract first line only for inline display
@@ -325,6 +336,8 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
             const currentSuggestion = aiSuggestionRef.current;
             if (currentSuggestion) {
                 const position = editor.getPosition();
+
+                // Simply append the suggestion text at the cursor position
                 editor.executeEdits('ai-suggestion', [{
                     range: new monaco.Range(
                         position.lineNumber,
@@ -335,6 +348,9 @@ const Editor = ({ socketRef, roomId, onCodeChange, initialCode, username, langua
                     text: currentSuggestion
                 }]);
                 setAiSuggestion(null);
+                try {
+                    editor.removeContentWidget({ getId: () => 'ghost.text.widget' });
+                } catch (e) {}
                 decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
             } else {
                 // Default tab behavior (insert spaces/tab)

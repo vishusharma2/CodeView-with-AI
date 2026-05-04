@@ -98,20 +98,62 @@ router.post("/suggest", authenticateToken, async (req, res) => {
     const contextAfter = afterLines.slice(0, 5).join('\n');
 
     // Create concise prompt
-    const prompt = `You are an expert ${language || "javascript"} programmer. Complete the following code by providing the next 1-2 lines that should come immediately after the cursor.
+    const prompt = `You are an expert ${language || "javascript"} programmer acting as an inline code autocomplete engine.
 
-Code context (last 10 lines before cursor):
-${contextBefore}
+The user is writing ${language || "javascript"} code. Complete the code by providing ONLY the next 1-2 lines that should come immediately after the cursor position marked by <CURSOR>.
 
-<COMPLETE_HERE>
+Rules:
+- Output ONLY raw ${language || "javascript"} code, nothing else
+- Do NOT include markdown, code fences, backticks, explanations, or HTML tags
+- Do NOT repeat code that already exists before the cursor
+- Provide a natural, idiomatic continuation of the code
 
-Code after cursor (next 5 lines):
-${contextAfter}
+Code before cursor:
+${contextBefore}<CURSOR>
 
-Provide ONLY the completion code (1-2 lines), no explanations or markdown.`;
+Code after cursor:
+${contextAfter}`;
 
     let suggestion = null;
     let usedModel = 'none';
+
+    // Helper to clean AI response
+    const cleanSuggestion = (raw) => {
+      if (!raw) return null;
+      let cleaned = raw.trim();
+      
+      // Strip markdown code fences
+      cleaned = cleaned.replace(/^```(?:\w+)?\s*/i, '');
+      cleaned = cleaned.replace(/```\s*$/i, '');
+      
+      // Strip HTML tags that aren't code
+      if (cleaned.match(/^<\/?[a-z]+[\s>]/i) && !['<', '<='].some(op => cleaned.startsWith(op + ' '))) {
+        // Entire response is an HTML tag — reject it
+        return null;
+      }
+      
+      // Remove leading/trailing quotes if the AI wrapped the whole thing
+      if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+        if (cleaned.split('\n').length === 1) {
+          cleaned = cleaned.slice(1, -1);
+        }
+      }
+      
+      cleaned = cleaned.trim();
+      
+      // Reject empty or too-short suggestions
+      if (!cleaned || cleaned.length < 2) return null;
+      
+      // Reject if it looks like an explanation rather than code
+      if (cleaned.toLowerCase().startsWith('the ') || 
+          cleaned.toLowerCase().startsWith('this ') ||
+          cleaned.toLowerCase().startsWith('here ') ||
+          cleaned.toLowerCase().startsWith('note:')) {
+        return null;
+      }
+      
+      return cleaned;
+    };
 
     // Try Ollama first (local deepseek-coder)
     if (process.env.OLLAMA_API_URL && process.env.OLLAMA_MODEL) {
@@ -119,6 +161,7 @@ Provide ONLY the completion code (1-2 lines), no explanations or markdown.`;
         logger.log('🤖 Trying Ollama (deepseek-coder)...');
         logger.log('Prompt preview:', prompt.substring(0, 100) + '...');
         suggestion = await getOllamaCodeSuggestion(prompt);
+        suggestion = cleanSuggestion(suggestion);
         usedModel = 'ollama';
         logger.log('✅ Ollama responded successfully');
         logger.log('Suggestion received:', suggestion ? `"${suggestion.substring(0, 50)}..."` : 'EMPTY');
@@ -133,7 +176,7 @@ Provide ONLY the completion code (1-2 lines), no explanations or markdown.`;
             const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
             const result = await model.generateContent(prompt);
             const response = await result.response;
-            suggestion = response.text()?.trim() || null;
+            suggestion = cleanSuggestion(response.text());
             usedModel = 'gemini';
             logger.log('✅ Gemini responded successfully');
           } catch (geminiErr) {
@@ -151,7 +194,7 @@ Provide ONLY the completion code (1-2 lines), no explanations or markdown.`;
           const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
           const result = await model.generateContent(prompt);
           const response = await result.response;
-          suggestion = response.text()?.trim() || null;
+          suggestion = cleanSuggestion(response.text());
           usedModel = 'gemini';
           logger.log('✅ Gemini responded successfully');
         } catch (geminiErr) {
@@ -160,6 +203,28 @@ Provide ONLY the completion code (1-2 lines), no explanations or markdown.`;
       } else {
         logger.error('❌ No AI service configured');
       }
+    }
+    // Post-process: strip any echoed code context from the suggestion
+    if (suggestion) {
+      // Normalize line endings
+      let normalized = suggestion.replace(/\r\n/g, '\n').trim();
+      const normalizedBefore = contextBefore.replace(/\r\n/g, '\n');
+      
+      // If AI echoed back the code before cursor, strip it
+      if (normalizedBefore.length > 0 && normalized.startsWith(normalizedBefore)) {
+        normalized = normalized.substring(normalizedBefore.length);
+      } else {
+        // Try to find the last line before cursor within the suggestion
+        const lastLine = normalizedBefore.split('\n').pop()?.trim();
+        if (lastLine && lastLine.length > 3) {
+          const idx = normalized.indexOf(lastLine);
+          if (idx !== -1) {
+            normalized = normalized.substring(idx + lastLine.length);
+          }
+        }
+      }
+      
+      suggestion = normalized.trim() || null;
     }
 
     return res.json({ suggestion, model: usedModel });
